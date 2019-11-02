@@ -240,3 +240,7 @@ ModelManifest.xml
 
 # FAKE - F# Make
 .fake/
+/msvc/vs15/Win32/Debug_static
+/msvc/vs15/Win32/Release_static
+/builds
+*.o
