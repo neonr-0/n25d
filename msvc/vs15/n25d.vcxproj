@@ -51,7 +51,7 @@
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v140</PlatformToolset>
     <CharacterSet>MultiByte</CharacterSet>
@@ -63,7 +63,7 @@
     <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v140</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
@@ -77,7 +77,7 @@
     <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v140</PlatformToolset>
     <CharacterSet>MultiByte</CharacterSet>
@@ -89,7 +89,7 @@
     <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v140</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
@@ -134,42 +134,44 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <IncludePath>..\..\headers;..\..\depends;$(IncludePath)</IncludePath>
-    <OutDir>..\..\builds</OutDir>
+    <OutDir>..\..\builds\x86</OutDir>
     <TargetName>$(ProjectName)d</TargetName>
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug_static|Win32'">
     <IncludePath>..\..\headers;..\..\depends;$(IncludePath)</IncludePath>
-    <OutDir>..\..\builds</OutDir>
-    <TargetName>$(ProjectName)d</TargetName>
+    <OutDir>..\..\builds\x86</OutDir>
+    <TargetName>$(ProjectName)d_static</TargetName>
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <IncludePath>..\..\headers;..\..\depends;$(IncludePath)</IncludePath>
-    <OutDir>..\..\builds</OutDir>
+    <OutDir>..\..\builds\x86</OutDir>
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_static|Win32'">
     <IncludePath>..\..\headers;..\..\depends;$(IncludePath)</IncludePath>
-    <OutDir>..\..\builds</OutDir>
+    <OutDir>..\..\builds\x86</OutDir>
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
+    <TargetName>$(ProjectName)_static</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <IncludePath>..\..\headers;..\..\depends;$(IncludePath)</IncludePath>
-    <OutDir>..\..\builds</OutDir>
+    <OutDir>..\..\builds\x64</OutDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug_static|x64'">
     <IncludePath>..\..\headers;..\..\depends;$(IncludePath)</IncludePath>
-    <OutDir>..\..\builds</OutDir>
-    <TargetName>$(ProjectName)d</TargetName>
+    <OutDir>..\..\builds\x64</OutDir>
+    <TargetName>$(ProjectName)d_static</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <IncludePath>..\..\headers;..\..\depends;$(IncludePath)</IncludePath>
-    <OutDir>..\..\builds</OutDir>
+    <OutDir>..\..\builds\x64</OutDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_static|x64'">
     <IncludePath>..\..\headers;..\..\depends;$(IncludePath)</IncludePath>
-    <OutDir>..\..\builds</OutDir>
+    <OutDir>..\..\builds\x64</OutDir>
+    <TargetName>$(ProjectName)_static</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>

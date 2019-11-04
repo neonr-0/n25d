@@ -156,6 +156,29 @@ void n25dPartSetUVTexture(n25dModel* p_n25dModel, int32_t n25dPartID, float u, f
 	//6
 	p_n25dModel->nPart[n25dPartID].n25dMeshTransform.tu[5] = u_end;
 	p_n25dModel->nPart[n25dPartID].n25dMeshTransform.tv[5] = v_end;
+	//Set also origin mesh
+	p_n25dModel->nPart[n25dPartID].n25dMeshOrigin.u = u;
+	p_n25dModel->nPart[n25dPartID].n25dMeshOrigin.v = v;
+	p_n25dModel->nPart[n25dPartID].n25dMeshOrigin.u_end = u_end;
+	p_n25dModel->nPart[n25dPartID].n25dMeshOrigin.v_end = v_end;
+	//1 1 triangle
+	p_n25dModel->nPart[n25dPartID].n25dMeshOrigin.tu[0] = u;
+	p_n25dModel->nPart[n25dPartID].n25dMeshOrigin.tv[0] = v;
+	//2
+	p_n25dModel->nPart[n25dPartID].n25dMeshOrigin.tu[1] = u_end;
+	p_n25dModel->nPart[n25dPartID].n25dMeshOrigin.tv[1] = v;
+	//3
+	p_n25dModel->nPart[n25dPartID].n25dMeshOrigin.tu[2] = u;
+	p_n25dModel->nPart[n25dPartID].n25dMeshOrigin.tv[2] = v_end;
+	//4 2 triangle
+	p_n25dModel->nPart[n25dPartID].n25dMeshOrigin.tu[3] = u;
+	p_n25dModel->nPart[n25dPartID].n25dMeshOrigin.tv[3] = v_end;
+	//5 
+	p_n25dModel->nPart[n25dPartID].n25dMeshOrigin.tu[4] = u_end;
+	p_n25dModel->nPart[n25dPartID].n25dMeshOrigin.tv[4] = v;
+	//6
+	p_n25dModel->nPart[n25dPartID].n25dMeshOrigin.tu[5] = u_end;
+	p_n25dModel->nPart[n25dPartID].n25dMeshOrigin.tv[5] = v_end;
 }
 //Mesh section
 void n25dMeshNew(n25dPart* p_n25dPart, n25dMesh* p_n25Mesh, float x, float y, float width, float height)
