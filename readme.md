@@ -6,7 +6,8 @@ n25d is a skeletal mesh transforming library for 2D graphics.
 ## Build
 make it
 ```make
-make all
+mkdir build
+make
 ```
 
 ## Donation

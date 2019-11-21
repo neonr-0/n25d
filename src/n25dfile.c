@@ -105,7 +105,7 @@ FILE* n25dFileOpenA(char* PathA, char const* modeA)
 	f_id = _wfopen(wFilename, ModeW);
 #endif
 //C11 safe version
-#elif __STDC_VERSION__ >=201112L || _MSC_VER >= 1400
+#elif (__STDC_VERSION__ >=201112L && __STDC_LIB_EXT1__ == 1) || _MSC_VER >= 1400
 	if (0 != fopen_s(&f_id, PathA, modeA))
 		f_id = NULL;
 #else
