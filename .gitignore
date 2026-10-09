@@ -242,5 +242,11 @@ ModelManifest.xml
 .fake/
 /msvc/vs15/Win32/Debug_static
 /msvc/vs15/Win32/Release_static
+msvc/**/Win32/
+*.tlog
+*.idb
+*.iobj
+*.ipdb
+*.exp
 /builds
 *.o

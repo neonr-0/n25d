@@ -141,7 +141,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug_static|Win32'">
     <IncludePath>..\..\headers;..\..\depends;$(IncludePath)</IncludePath>
     <OutDir>..\..\builds\x86</OutDir>
-    <TargetName>$(ProjectName)d_static</TargetName>
+    <TargetName>$(ProjectName)d</TargetName>
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -153,11 +153,12 @@
     <IncludePath>..\..\headers;..\..\depends;$(IncludePath)</IncludePath>
     <OutDir>..\..\builds\x86</OutDir>
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
-    <TargetName>$(ProjectName)_static</TargetName>
+    <TargetName>$(ProjectName)</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <IncludePath>..\..\headers;..\..\depends;$(IncludePath)</IncludePath>
     <OutDir>..\..\builds\x64</OutDir>
+    <TargetName>$(ProjectName)d</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug_static|x64'">
     <IncludePath>..\..\headers;..\..\depends;$(IncludePath)</IncludePath>
@@ -171,7 +172,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_static|x64'">
     <IncludePath>..\..\headers;..\..\depends;$(IncludePath)</IncludePath>
     <OutDir>..\..\builds\x64</OutDir>
-    <TargetName>$(ProjectName)_static</TargetName>
+    <TargetName>$(ProjectName)</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -205,6 +206,8 @@
       <SDLCheck>false</SDLCheck>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <CompileAs>CompileAsC</CompileAs>
+      <ProgramDataBaseFileName>..\..\builds\x64\$(ProjectName)d_static.pdb</ProgramDataBaseFileName>
+      <ObjectFileName>..\..\builds\x64\</ObjectFileName>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">

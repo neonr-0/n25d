@@ -6,5 +6,4 @@
 - [x] Open and save file (*.n25d)
 - [ ] File hash check
 - [ ] Texture change
-- [ ] Model editor
 - [ ] Non-linear parameters
