@@ -33,6 +33,10 @@
 #define MAX_BUFFER 15360 //15Kb initial buffer
 #define MAX_MODEL_NAME 8192
 
+//File format limits
+#define N25D_FILE_MAX_POINTS 65536
+#define N25D_FILE_MAX_PART_PARAMS 4096
+
 struct n25dFileHeader
 {
 	//file identify
