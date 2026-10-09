@@ -46,41 +46,50 @@ void n25dPartParamRotationTransform(n25dPart* pPart, mat4* mRotation, float f_an
 
 n25dModel* n25dModelInit(n25dModel* p_n25dmodel, float width, float height)
 {
-	p_n25dmodel->nPartCount_max = 0;
-	p_n25dmodel->nPartCount = 0;
-	p_n25dmodel->nPart = 0;
-	p_n25dmodel->x = 0.0f;
-	p_n25dmodel->y = 0.0f;
-	p_n25dmodel->z = 0.0f;
+	p_n25dmodel->nPartCount_max = (int32_t)0;
+	p_n25dmodel->nPartCount = (int32_t)0;
+	p_n25dmodel->nPart = (void*)0;
+	p_n25dmodel->x = (float)0.0f;
+	p_n25dmodel->y = (float)0.0f;
+	p_n25dmodel->z = (float)0.0f;
 	p_n25dmodel->width = width;
 	p_n25dmodel->height = height;
 	//params new
-	p_n25dmodel->nParam = NULL;
-	p_n25dmodel->nParamC = 0;
-	p_n25dmodel->nParamCMAX = 0;
-	p_n25dmodel->nModelName = NULL;
-	p_n25dmodel->nModelNameLen = 0;
+	p_n25dmodel->nParam = (void*)0;
+	p_n25dmodel->nParamC = (int32_t)0;
+	p_n25dmodel->nParamCMAX = (int32_t)0;
+	p_n25dmodel->nModelName = (void*)0;
+	p_n25dmodel->nModelNameLen = (int32_t)0;
 	return p_n25dmodel;
 }
 n25dModel* n25dModelNew(float width, float height)
 {
-	return n25dModelInit(malloc(sizeof(n25dModel)), width, height);
+	n25dModel* p_n25dmodel = (n25dModel*)malloc(sizeof(n25dModel));
+	if (p_n25dmodel == NULL)
+		return NULL;
+	return n25dModelInit(p_n25dmodel, width, height);
 }
 void n25dModelSetName(n25dModel* p_n25dmodel, char* charA, int32_t charLen)
 {
-	if (p_n25dmodel->nModelName != NULL)
+	if (p_n25dmodel == NULL || charLen < 0 || (charLen > 0 && charA == NULL))
+		return;
+	free(p_n25dmodel->nModelName);
+	if (charLen == 0)
 	{
-		free(p_n25dmodel->nModelName);
-		p_n25dmodel->nModelName = (char*)malloc(charLen * sizeof(char));
-		memcpy(p_n25dmodel->nModelName, charA, charLen);
-		p_n25dmodel->nModelNameLen = charLen;
+		p_n25dmodel->nModelName = NULL;
+		p_n25dmodel->nModelNameLen = (int32_t)0;
+		return;
 	}
-	else
+	//+1 for the null terminator
+	p_n25dmodel->nModelName = (char*)malloc((size_t)charLen + 1);
+	if (p_n25dmodel->nModelName == NULL)
 	{
-		p_n25dmodel->nModelName = (char*)malloc(charLen * sizeof(char));
-		memcpy(p_n25dmodel->nModelName, charA, charLen);
-		p_n25dmodel->nModelNameLen = charLen;
+		p_n25dmodel->nModelNameLen = (int32_t)0;
+		return;
 	}
+	memcpy(p_n25dmodel->nModelName, charA, (size_t)charLen);
+	p_n25dmodel->nModelName[charLen] = '\0';
+	p_n25dmodel->nModelNameLen = charLen;
 }
 //Parts section
 int32_t n25dPartNew(n25dModel* p_n25dModel, n25dTexture in_texture, float x, float y, float width, float height)
@@ -93,7 +102,7 @@ int32_t n25dPartNew(n25dModel* p_n25dModel, n25dTexture in_texture, float x, flo
 			&p_n25dModel->nPartCount_max, MAX_ALLOC_N25D_PARTS);
 
 	assert(p_n25dModel->nPart != NULL);//Part is not initialized or out of memory
-	if (p_n25dModel->nPart == NULL) return 0;//release check return zero if out of memory
+	if (p_n25dModel->nPart == NULL) return -1;//release check: negative return means out of memory
 	assert(p_n25dModel->nPartCount < p_n25dModel->nPartCount_max); //Part counter overflow
 
 	p_n25dModel->nPart[p_n25dModel->nPartCount].DrawOrder = 0; // default
@@ -205,6 +214,12 @@ void n25dMeshNew(n25dPart* p_n25dPart, n25dMesh* p_n25Mesh, float x, float y, fl
 	p_n25Mesh->a = (float*)malloc(p_n25Mesh->pointcount * sizeof(float));
 	p_n25Mesh->tu = (float*)malloc(p_n25Mesh->pointcount * sizeof(float));
 	p_n25Mesh->tv = (float*)malloc(p_n25Mesh->pointcount * sizeof(float));
+	//out of memory check (the default box writes below assume 6 allocated vertices)
+	if (p_n25Mesh->x == NULL || p_n25Mesh->y == NULL || p_n25Mesh->z == NULL ||
+		p_n25Mesh->r == NULL || p_n25Mesh->g == NULL || p_n25Mesh->b == NULL ||
+		p_n25Mesh->a == NULL || p_n25Mesh->tu == NULL || p_n25Mesh->tv == NULL ||
+		p_n25Mesh->pointcount < 6)
+		return;
 	//default box sprite
 	for (int i = 0; i < p_n25Mesh->pointcount; i++)
 	{
@@ -250,9 +265,35 @@ void n25dMeshNew(n25dPart* p_n25dPart, n25dMesh* p_n25Mesh, float x, float y, fl
 	p_n25Mesh->tu[5] = 1.0f;
 	p_n25Mesh->tv[5] = 1.0f;
 }
+void n25dMeshCopy(n25dMesh* p_n25dMeshIn, n25dMesh* p_n25dMeshOut)
+{	
+	assert(p_n25dMeshIn->pointcount != p_n25dMeshOut->pointcount);//It's two identical meshes
+	p_n25dMeshOut->TextureID = p_n25dMeshIn->TextureID;
+	p_n25dMeshOut->DrawOrder = p_n25dMeshIn->DrawOrder;
+	p_n25dMeshOut->u = p_n25dMeshIn->u;
+	p_n25dMeshOut->v = p_n25dMeshIn->v;
+	p_n25dMeshOut->u_end = p_n25dMeshIn->u_end;
+	p_n25dMeshOut->v_end = p_n25dMeshIn->v_end;
+	memcpy(p_n25dMeshOut->texture_param, p_n25dMeshIn->texture_param,sizeof(p_n25dMeshOut->texture_param));
+	for (int i = 0; i < p_n25dMeshIn->pointcount; i++)
+	{
+		p_n25dMeshOut->x[i] = p_n25dMeshIn->x[i];
+		p_n25dMeshOut->y[i] = p_n25dMeshIn->y[i];
+		p_n25dMeshOut->z[i] = p_n25dMeshIn->z[i];
+		p_n25dMeshOut->tu[i] = p_n25dMeshIn->tu[i];
+		p_n25dMeshOut->tv[i] = p_n25dMeshIn->tv[i];
+		p_n25dMeshOut->r[i] = p_n25dMeshIn->r[i];
+		p_n25dMeshOut->g[i] = p_n25dMeshIn->g[i];
+		p_n25dMeshOut->b[i] = p_n25dMeshIn->b[i];
+		p_n25dMeshOut->a[i] = p_n25dMeshIn->a[i];
+	}
+}
 //Clean all vertex (if changed vertex count)
 void n25dMeshReallocateMemory(n25dMesh* p_n25Mesh, int32_t point_count)
 {
+	if (p_n25Mesh == NULL || point_count <= 0)
+		return;
+	p_n25Mesh->pointcount = point_count;
 	if (p_n25Mesh->x != NULL)
 	{
 		free(p_n25Mesh->x);
@@ -298,6 +339,12 @@ void n25dMeshReallocateMemory(n25dMesh* p_n25Mesh, int32_t point_count)
 		free(p_n25Mesh->tv);
 		p_n25Mesh->tv = (float*)malloc(point_count * sizeof(float));
 	}
+
+	//out of memory check
+	if (p_n25Mesh->x == NULL || p_n25Mesh->y == NULL || p_n25Mesh->z == NULL ||
+		p_n25Mesh->r == NULL || p_n25Mesh->g == NULL || p_n25Mesh->b == NULL ||
+		p_n25Mesh->a == NULL || p_n25Mesh->tu == NULL || p_n25Mesh->tv == NULL)
+		return;
 
 	//Default values
 	for (int i = 0; i < p_n25Mesh->pointcount; i++)
@@ -405,6 +452,12 @@ void n25dPartParamNew(n25dPart* pPart)
 	pPart->n25dMeshParam[pPart->n25dMeshParamC].y_hi = (float*)malloc(pPart->pointcount * sizeof(float));
 	pPart->n25dMeshParam[pPart->n25dMeshParamC].x_low = (float*)malloc(pPart->pointcount * sizeof(float));
 	pPart->n25dMeshParam[pPart->n25dMeshParamC].y_low = (float*)malloc(pPart->pointcount * sizeof(float));
+	//out of memory check
+	if (pPart->n25dMeshParam[pPart->n25dMeshParamC].x_hi == NULL ||
+		pPart->n25dMeshParam[pPart->n25dMeshParamC].y_hi == NULL ||
+		pPart->n25dMeshParam[pPart->n25dMeshParamC].x_low == NULL ||
+		pPart->n25dMeshParam[pPart->n25dMeshParamC].y_low == NULL)
+		return;
 	for (int i = 0; i < pPart->pointcount; i++)
 	{
 		pPart->n25dMeshParam[pPart->n25dMeshParamC].x_hi[i] = 0.0f;
