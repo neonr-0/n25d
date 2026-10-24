@@ -28,6 +28,9 @@
 #define N25D_MAIN_H
 
 //Dependencies
+#include <stdint.h>
+#include <stdlib.h>
+
 #include <cglm/cglm.h>
 
 //Internal headers
@@ -104,6 +107,44 @@ void n25dPartSetUVTexture(n25dModel* p_n25dModel, int32_t n25dPartID, float u, f
 //	Cleaning all current vertex information and allocating memory
 //////////////////////////////////////////////////////////////////////////
 void n25dMeshReallocateMemory(n25dMesh* p_n25Mesh, int32_t point_count);
+
+//////////////////////////////////////////////////////////////////////////
+// n25dMeshCopy(n25dMesh* p_n25dMeshIn, n25dMesh* p_n25dMeshOut);
+// no return data
+//	parameters:
+//				p_n25dMeshIn - source mesh
+//				p_n25dMeshOut - destination mesh (must be allocated with the same point count)
+//	note:
+//	Copies all vertex data and texture coordinates
+//////////////////////////////////////////////////////////////////////////
+void n25dMeshCopy(n25dMesh* p_n25dMeshIn, n25dMesh* p_n25dMeshOut);
+
+//////////////////////////////////////////////////////////////////////////
+// n25dMeshFree(n25dMesh* p_n25Mesh);
+// no return data
+//	parameters:
+//				p_n25Mesh - pointer to mesh to free (vertex arrays only, mesh struct stays)
+//////////////////////////////////////////////////////////////////////////
+void n25dMeshFree(n25dMesh* p_n25Mesh);
+
+//////////////////////////////////////////////////////////////////////////
+// n25dModelFree(n25dModel* p_n25dModel);
+// no return data
+//	parameters:
+//				p_n25dModel - pointer to model to free (all parts, meshes, params, name)
+//////////////////////////////////////////////////////////////////////////
+void n25dModelFree(n25dModel* p_n25dModel);
+
+//////////////////////////////////////////////////////////////////////////
+// n25dGetTransformedVertexData(n25dModel* p_n25dModel, int32_t partID, float* out_data, int32_t max_size);
+// returns number of floats written, required size in floats if out_data is NULL, -1 on error
+//	parameters:
+//				p_n25dModel - pointer to allocated model
+//				partID - part ID
+//				out_data - output buffer (flat: x,y,z,r,g,b,a,tu,tv per vertex) or NULL to query size
+//				max_size - output buffer size in floats
+//////////////////////////////////////////////////////////////////////////
+int32_t n25dGetTransformedVertexData(n25dModel* p_n25dModel, int32_t partID, float* out_data, int32_t max_size);
 
 //////////////////////////////////////////////////////////////////////////
 //Parts rotation settings

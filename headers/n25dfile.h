@@ -27,9 +27,14 @@
 #ifndef N25D_FILE_H
 #define N25D_FILE_H
 
+#include <stdint.h>
+#include <stdio.h>
+
+#include "n25d.h"
+
 //Definitions
 #define n25dSignature 0xFE0D2525
-#define n25dVersionFile 1UL
+#define n25dVersionFile 2UL //v2: per-part texture id in file
 #define MAX_BUFFER 15360 //15Kb initial buffer
 #define MAX_MODEL_NAME 8192
 
@@ -69,6 +74,14 @@ enum n25FileT
 //				modeA - file access mode (stdio format rb - read, wb - write)
 //////////////////////////////////////////////////////////////////////////
 FILE* n25dFileOpenA(char* PathA, char const* modeA);
+//////////////////////////////////////////////////////////////////////////
+// n25dFileRead(FILE* in_file, int32_t* out_dataLen);
+// return pointer of allocated memory with file content, NULL on error
+//	parameters:
+//				in_file - Opened file descriptor
+//				out_dataLen - out, size in bytes of the read data
+//////////////////////////////////////////////////////////////////////////
+int8_t* n25dFileRead(FILE* in_file, int32_t* out_dataLen);
 //////////////////////////////////////////////////////////////////////////
 // n25dFileWrite(FILE* in_file, int8_t* in_data, int32_t in_dataLen);
 // return zero on success or -1 on failed

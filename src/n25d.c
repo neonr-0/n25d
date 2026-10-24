@@ -267,7 +267,7 @@ void n25dMeshNew(n25dPart* p_n25dPart, n25dMesh* p_n25Mesh, float x, float y, fl
 }
 void n25dMeshCopy(n25dMesh* p_n25dMeshIn, n25dMesh* p_n25dMeshOut)
 {	
-	assert(p_n25dMeshIn->pointcount != p_n25dMeshOut->pointcount);//It's two identical meshes
+	assert(p_n25dMeshIn->pointcount == p_n25dMeshOut->pointcount);//It's two identical meshes
 	p_n25dMeshOut->TextureID = p_n25dMeshIn->TextureID;
 	p_n25dMeshOut->DrawOrder = p_n25dMeshIn->DrawOrder;
 	p_n25dMeshOut->u = p_n25dMeshIn->u;
@@ -359,6 +359,75 @@ void n25dMeshReallocateMemory(n25dMesh* p_n25Mesh, int32_t point_count)
 		p_n25Mesh->tu[i] = 0.0f;
 		p_n25Mesh->tv[i] = 0.0f;
 	}
+}
+//Free mesh vertex arrays
+void n25dMeshFree(n25dMesh* p_n25Mesh)
+{
+	if (p_n25Mesh == NULL)
+		return;
+	free(p_n25Mesh->x); p_n25Mesh->x = NULL;
+	free(p_n25Mesh->y); p_n25Mesh->y = NULL;
+	free(p_n25Mesh->z); p_n25Mesh->z = NULL;
+	free(p_n25Mesh->r); p_n25Mesh->r = NULL;
+	free(p_n25Mesh->g); p_n25Mesh->g = NULL;
+	free(p_n25Mesh->b); p_n25Mesh->b = NULL;
+	free(p_n25Mesh->a); p_n25Mesh->a = NULL;
+	free(p_n25Mesh->tu); p_n25Mesh->tu = NULL;
+	free(p_n25Mesh->tv); p_n25Mesh->tv = NULL;
+}
+//Free entire model (parts, meshes, params, name)
+void n25dModelFree(n25dModel* p_n25dModel)
+{
+	if (p_n25dModel == NULL)
+		return;
+	for (int32_t i = 0; i < p_n25dModel->nPartCount; i++)
+	{
+		n25dPart* pPart = &p_n25dModel->nPart[i];
+		if (pPart->n25dMeshParam != NULL)
+		{
+			for (int32_t j = 0; j < pPart->n25dMeshParamC; j++)
+			{
+				free(pPart->n25dMeshParam[j].x_hi);
+				free(pPart->n25dMeshParam[j].y_hi);
+				free(pPart->n25dMeshParam[j].x_low);
+				free(pPart->n25dMeshParam[j].y_low);
+			}
+			free(pPart->n25dMeshParam);
+			pPart->n25dMeshParam = NULL;
+		}
+		n25dMeshFree(&pPart->n25dMeshOrigin);
+		n25dMeshFree(&pPart->n25dMeshTransform);
+	}
+	free(p_n25dModel->nPart);
+	free(p_n25dModel->nParam);
+	free(p_n25dModel->nModelName);
+	free(p_n25dModel);
+}
+//Get transformed mesh vertex data as a flat array (x,y,z,r,g,b,a,tu,tv per vertex).
+//out_data == NULL: returns the required size in floats. Returns -1 on error.
+int32_t n25dGetTransformedVertexData(n25dModel* p_n25dModel, int32_t partID, float* out_data, int32_t max_size)
+{
+	if (p_n25dModel == NULL || partID < 0 || partID >= p_n25dModel->nPartCount)
+		return -1;
+	n25dMesh* pMesh = &p_n25dModel->nPart[partID].n25dMeshTransform;
+	int32_t needed = pMesh->pointcount * 9;
+	if (out_data == NULL)
+		return needed;
+	if (max_size < needed)
+		return -1;
+	for (int32_t i = 0; i < pMesh->pointcount; i++)
+	{
+		out_data[i * 9 + 0] = pMesh->x[i];
+		out_data[i * 9 + 1] = pMesh->y[i];
+		out_data[i * 9 + 2] = pMesh->z[i];
+		out_data[i * 9 + 3] = pMesh->r[i];
+		out_data[i * 9 + 4] = pMesh->g[i];
+		out_data[i * 9 + 5] = pMesh->b[i];
+		out_data[i * 9 + 6] = pMesh->a[i];
+		out_data[i * 9 + 7] = pMesh->tu[i];
+		out_data[i * 9 + 8] = pMesh->tv[i];
+	}
+	return needed;
 }
 //Helpers
 void* n25dMemoryDynHelper(void* MemPointer, size_t MemorySize, int32_t* MaximumMemory, int32_t MemoryStep)

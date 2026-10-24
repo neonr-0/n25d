@@ -25,6 +25,7 @@
 */
 #pragma once
 
+#include <stdint.h>
 
 //////////////////////////////////////////////////////////////////////////
 // Universal structure to hold texture ID (OpenGL) or pointer (DirectX)

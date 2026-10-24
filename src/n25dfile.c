@@ -39,47 +39,6 @@ int32_t n25dFileHelperAdd_int32(void* p_Data, int32_t in_long, int32_t dataLen);
 int32_t n25dFileHelperAdd_f32(void* p_Data, float in_float, int32_t dataLen);
 int32_t n25dFileHelperAdd_blob(void* p_Data, void* in_data, int32_t lenght, int32_t dataLen);
 int32_t n25dFileHelperGet_blob(void* p_Data, void* out_data, int32_t lenght, int32_t dataLen);
-
-//Internal: release model memory (used on load failure paths)
-static void n25dMeshFreeInternal(n25dMesh* p_n25Mesh)
-{
-	free(p_n25Mesh->x); p_n25Mesh->x = NULL;
-	free(p_n25Mesh->y); p_n25Mesh->y = NULL;
-	free(p_n25Mesh->z); p_n25Mesh->z = NULL;
-	free(p_n25Mesh->r); p_n25Mesh->r = NULL;
-	free(p_n25Mesh->g); p_n25Mesh->g = NULL;
-	free(p_n25Mesh->b); p_n25Mesh->b = NULL;
-	free(p_n25Mesh->a); p_n25Mesh->a = NULL;
-	free(p_n25Mesh->tu); p_n25Mesh->tu = NULL;
-	free(p_n25Mesh->tv); p_n25Mesh->tv = NULL;
-}
-static void n25dModelFreeInternal(n25dModel* p_n25dModel)
-{
-	if (p_n25dModel == NULL)
-		return;
-	for (int32_t i = 0; i < p_n25dModel->nPartCount; i++)
-	{
-		n25dPart* pPart = &p_n25dModel->nPart[i];
-		if (pPart->n25dMeshParam != NULL)
-		{
-			for (int32_t j = 0; j < pPart->n25dMeshParamC; j++)
-			{
-				free(pPart->n25dMeshParam[j].x_hi);
-				free(pPart->n25dMeshParam[j].y_hi);
-				free(pPart->n25dMeshParam[j].x_low);
-				free(pPart->n25dMeshParam[j].y_low);
-			}
-			free(pPart->n25dMeshParam);
-			pPart->n25dMeshParam = NULL;
-		}
-		n25dMeshFreeInternal(&pPart->n25dMeshOrigin);
-		n25dMeshFreeInternal(&pPart->n25dMeshTransform);
-	}
-	free(p_n25dModel->nPart);
-	free(p_n25dModel->nParam);
-	free(p_n25dModel->nModelName);
-	free(p_n25dModel);
-}
 int32_t n25dFileHelperGet_int32(void* p_Data, int32_t* out_long, int32_t dataLen);
 int32_t n25dFileHelperGet_f32(void* p_Data, float* out_float, int32_t dataLen);
 
@@ -345,6 +304,10 @@ int8_t* n25dSaveToMemory(n25dModel* p_n25dModel, int32_t* out_dataLen)
 			dataLen = n25dFileHelperAdd_f32(dataC, p_n25dModel->nPart[i].n25dMeshParam[i2].angle_hi, dataLen);
 			dataLen = n25dFileHelperAdd_f32(dataC, p_n25dModel->nPart[i].n25dMeshParam[i2].angle_low, dataLen);
 		}
+		//Part texture id (file version 2)
+		dataC = n25dSaveBufferGrow(dataC, dataLen, &dataLenMax);
+		if (dataC == NULL) goto savefail;
+		dataLen = n25dFileHelperAdd_int32(dataC, (int32_t)p_n25dModel->nPart[i].TextureID.id, dataLen);
 	}
 
 	dataLen = n25dFileHelperAdd_int32(dataC, n25FileT_EOF, dataLen);
@@ -395,10 +358,10 @@ n25dModel* n25dLoadFromMemory(int8_t* dataC, int32_t dataLenMax)
 	Header.n25dModelParamCount = (int32_t)ftohl((uint32_t)Header.n25dModelParamCount);
 	Header.Reserved = (int32_t)ftohl((uint32_t)Header.Reserved);
 
-	//Verify signature and file version
+	//Verify signature and file version (v1 files are still readable, they just have no texture ids)
 	if (Header.n25dIdentify != (int32_t)n25dSignature)
 		return NULL;
-	if (Header.n25dFileVersion != (int32_t)n25dVersionFile)
+	if (Header.n25dFileVersion < 1 || Header.n25dFileVersion > (int32_t)n25dVersionFile)
 		return NULL;
 
 	//Create new model
@@ -527,8 +490,9 @@ n25dModel* n25dLoadFromMemory(int8_t* dataC, int32_t dataLenMax)
 				dataLen = n25dFileHelperGet_int32(dataC, &MeshParamCount, dataLen);
 				if (MeshParamCount < 0 || MeshParamCount > (int32_t)N25D_FILE_MAX_PART_PARAMS)
 					goto fail;
-				//Each param: 4 floats per vertex + 2 angle floats
-				if (dataLen + MeshParamCount * (part_points * 4 * (int32_t)sizeof(float) + 2 * (int32_t)sizeof(float)) > dataLenMax)
+				//Each param: 4 floats per vertex + 2 angle floats, plus texture id on version 2
+				if (dataLen + MeshParamCount * (part_points * 4 * (int32_t)sizeof(float) + 2 * (int32_t)sizeof(float)) +
+					(Header.n25dFileVersion >= 2 ? (int32_t)sizeof(int32_t) : 0) > dataLenMax)
 					goto fail;
 				for (int i2 = 0; i2 < MeshParamCount; i2++)
 				{
@@ -542,6 +506,15 @@ n25dModel* n25dLoadFromMemory(int8_t* dataC, int32_t dataLenMax)
 					}
 					dataLen = n25dFileHelperGet_f32(dataC, &p_n25dModel->nPart[cur_part].n25dMeshParam[i2].angle_hi, dataLen);
 					dataLen = n25dFileHelperGet_f32(dataC, &p_n25dModel->nPart[cur_part].n25dMeshParam[i2].angle_low, dataLen);
+				}
+				//Part texture id (file version 2)
+				if (Header.n25dFileVersion >= 2)
+				{
+					if (dataLen + (int32_t)sizeof(int32_t) > dataLenMax)
+						goto fail;
+					int32_t tex = 0;
+					dataLen = n25dFileHelperGet_int32(dataC, &tex, dataLen);
+					p_n25dModel->nPart[cur_part].TextureID = n25dTexture_id((uint32_t)tex);
 				}
 				break;
 			}
@@ -559,6 +532,6 @@ n25dModel* n25dLoadFromMemory(int8_t* dataC, int32_t dataLenMax)
 	return p_n25dModel;
 
 fail:
-	n25dModelFreeInternal(p_n25dModel);
+	n25dModelFree(p_n25dModel);
 	return NULL;
 }

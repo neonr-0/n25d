@@ -27,10 +27,7 @@
 #ifndef _BYTE_ORDER_H
 #define _BYTE_ORDER_H
 
-#ifndef _STDINT_H
-#define _STDINT_H
 #include <stdint.h>
-#endif // _STDINT_H
 
 #ifdef __GLIBC__
 # include <endian.h>
@@ -108,7 +105,7 @@ static inline uint32_t bswap_32(uint32_t x)
 #pragma region file_endianness
 //I assume float it's IEEE-754
 //hw float to file function
-float htoff(const float in_f32)
+static inline float htoff(const float in_f32)
 {
 #if IS_BIG_ENDIAN == 1
 	float tmp_f32;
@@ -125,7 +122,7 @@ float htoff(const float in_f32)
 #endif
 }
 //file float to hw function
-float ftohf(const float in_f32)
+static inline float ftohf(const float in_f32)
 {
 #if IS_BIG_ENDIAN == 1
 	float tmp_f32;
@@ -143,7 +140,7 @@ float ftohf(const float in_f32)
 }
 
 //file to hw int32 function
-uint32_t ftohl(uint32_t x)
+static inline uint32_t ftohl(uint32_t x)
 {
 #if IS_BIG_ENDIAN == 1	
 	return bswap_32(x);
@@ -152,7 +149,7 @@ uint32_t ftohl(uint32_t x)
 #endif
 }
 //hw int32 to file function
-uint32_t htofl(uint32_t x)
+static inline uint32_t htofl(uint32_t x)
 {
 #if IS_BIG_ENDIAN == 1
 	return bswap_32(x);
