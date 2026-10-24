@@ -84,7 +84,7 @@ int32_t n25dPartNew(n25dModel* p_n25dModel, n25dTexture in_texture, float x, flo
 //	parameters:
 //				pPart - pointer to Part where will be created new parameter
 //////////////////////////////////////////////////////////////////////////
-void n25dPartParamNew(n25dPart* pPart);
+int32_t n25dPartParamNew(n25dPart* pPart);
 //////////////////////////////////////////////////////////////////////////
 // n25dPartSetUVTexture(n25dModel* p_n25dModel, int32_t n25dPartID, float u, float v, float u_end, float v_end);
 // no return data
@@ -131,7 +131,8 @@ void n25dMeshFree(n25dMesh* p_n25Mesh);
 // n25dModelFree(n25dModel* p_n25dModel);
 // no return data
 //	parameters:
-//				p_n25dModel - pointer to model to free (all parts, meshes, params, name)
+//				p_n25dModel - pointer to model to free (all parts, meshes, params, name
+//				and the model struct itself; do NOT free it again afterwards)
 //////////////////////////////////////////////////////////////////////////
 void n25dModelFree(n25dModel* p_n25dModel);
 

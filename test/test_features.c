@@ -7,6 +7,16 @@
 static int fails = 0;
 #define CHECK(cond, msg) do { if (cond) printf("PASS %s\n", msg); else { printf("FAIL %s\n", msg); fails++; } } while(0)
 
+//Write a little-endian int32 at offset, return new offset
+static int32_t put32(int8_t* p, int32_t off, int32_t val)
+{
+	p[off] = (int8_t)(val & 0xFF);
+	p[off+1] = (int8_t)((val >> 8) & 0xFF);
+	p[off+2] = (int8_t)((val >> 16) & 0xFF);
+	p[off+3] = (int8_t)((val >> 24) & 0xFF);
+	return off + 4;
+}
+
 int main(void)
 {
     // 1. Texture id round-trip (v2)
@@ -20,15 +30,30 @@ int main(void)
         CHECK(l && l->nPartCount == 2, "tex-v2: loaded");
         CHECK(l && l->nPart[0].TextureID.id == 7, "tex-v2: part0 tex==7");
         CHECK(l && l->nPart[1].TextureID.id == 99, "tex-v2: part1 tex==99");
-        // 2. v1 compat: patch version byte to 1, strip 4 tex bytes per part (before EOF)
-        // layout ends: ...partC(4) tex0(4) tex1(4) EOF(4) -> remove both tex ints
+        // 2. v1 compat: genuine v1 file, hand-crafted (1 part, 6-vertex box, no texture id at all)
         int8_t v1[4096];
-        memcpy(v1, buf, len);
-        v1[4] = 1; // version
-        memmove(v1+len-8, v1+len-4, 4); // keep EOF, drop 2 tex ints
-        n25dModel* v1m = n25dLoadFromMemory(v1, len-8);
-        CHECK(v1m && v1m->nPartCount == 2, "tex-v1: old file loads");
-        CHECK(v1m && v1m->nPart[0].TextureID.id == 0, "tex-v1: tex defaults to 0");
+        memset(v1, 0, sizeof(v1));
+        int32_t o = 0;
+        o = put32(v1, o, 0xFE0D2525); //signature (LE bytes 25 25 0d fe)
+        o = put32(v1, o, 1);          //file version 1
+        o = put32(v1, o, 1);          //n25dModelPartCount 1
+        o = put32(v1, o, 0);          //n25dModelParamCount 0
+        o += 4;                       //reserved
+        o = put32(v1, o, 0);          //n25FileT_ModelName
+        o = put32(v1, o, 0);          //name length 0
+        o = put32(v1, o, 3);          //n25FileT_ModelParams (no count: 0 params, next marker follows)
+        o = put32(v1, o, 1);          //n25FileT_ModelParts
+        o = put32(v1, o, 2);          //n25FileT_ModelPart_next
+        o = put32(v1, o, 6);          //part pointcount 6
+        o += 40;                      //10 zero fields: draworder, x,y,z,w,h,ax,ay, parent, parentC
+        o = put32(v1, o, 6);          //mesh pointcount 6 (must match part)
+        o += 20;                      //5 zero fields: mesh draworder + 4 uv floats
+        o += 6 * 36;                  //6 vertices x 9 floats (zeros)
+        o = put32(v1, o, 0);          //mesh param count 0
+        o = put32(v1, o, 5);          //n25FileT_EOF
+        n25dModel* v1m = n25dLoadFromMemory(v1, o);
+        CHECK(v1m && v1m->nPartCount == 1, "tex-v1: genuine v1 file loads");
+        CHECK(v1m && v1m->nPartCount == 1 && v1m->nPart[0].TextureID.id == 0, "tex-v1: tex defaults to 0");
         if (v1m) n25dModelFree(v1m);
         if (l) n25dModelFree(l);
     }

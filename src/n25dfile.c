@@ -39,6 +39,14 @@ int32_t n25dFileHelperAdd_int32(void* p_Data, int32_t in_long, int32_t dataLen);
 int32_t n25dFileHelperAdd_f32(void* p_Data, float in_float, int32_t dataLen);
 int32_t n25dFileHelperAdd_blob(void* p_Data, void* in_data, int32_t lenght, int32_t dataLen);
 int32_t n25dFileHelperGet_blob(void* p_Data, void* out_data, int32_t lenght, int32_t dataLen);
+
+//Internal: true if all 9 vertex arrays of a mesh are allocated (realloc OOM can leave a mix)
+static int n25dMeshAllArraysAllocated(n25dMesh* p_n25Mesh)
+{
+	return p_n25Mesh->x != NULL && p_n25Mesh->y != NULL && p_n25Mesh->z != NULL &&
+		p_n25Mesh->r != NULL && p_n25Mesh->g != NULL && p_n25Mesh->b != NULL &&
+		p_n25Mesh->a != NULL && p_n25Mesh->tu != NULL && p_n25Mesh->tv != NULL;
+}
 int32_t n25dFileHelperGet_int32(void* p_Data, int32_t* out_long, int32_t dataLen);
 int32_t n25dFileHelperGet_f32(void* p_Data, float* out_float, int32_t dataLen);
 
@@ -68,14 +76,14 @@ int32_t n25dFileHelperGet_int32(void* p_Data, int32_t* out_long, int32_t dataLen
 {
 	int8_t* p_tmp_byte = p_Data;
 	int32_t* p_tmp = (int32_t*)&p_tmp_byte[dataLen];
-	*out_long = htofl(*p_tmp);
+	*out_long = ftohl(*p_tmp);
 	return dataLen += sizeof(int32_t);
 }
 int32_t n25dFileHelperGet_f32(void* p_Data, float* out_float, int32_t dataLen)
 {
 	int8_t* p_tmp_byte = p_Data;
 	float* p_tmp = (float*)&p_tmp_byte[dataLen];
-	*out_float = htoff(*p_tmp);
+	*out_float = ftohf(*p_tmp);
 	return dataLen += sizeof(float);
 }
 int32_t n25dFileHelperGet_blob(void* p_Data, void* out_data, int32_t lenght, int32_t dataLen)
@@ -322,9 +330,9 @@ savefail:
 //Loading
 int32_t n25dLoadFromFileA(n25dModel** p_n25dModel, char* PathA)
 {
-	*p_n25dModel = NULL;
 	if (p_n25dModel == NULL)
 		return -1;
+	*p_n25dModel = NULL;
 
 	int32_t dataLen = 0;
 	FILE* f_id = n25dFileOpenA(PathA, "rb");
@@ -396,6 +404,7 @@ n25dModel* n25dLoadFromMemory(int8_t* dataC, int32_t dataLenMax)
 				else
 				{
 					//No name present
+					free(p_n25dModel->nModelName);
 					p_n25dModel->nModelName = NULL;
 					p_n25dModel->nModelNameLen = (int32_t)0;
 				}
@@ -425,8 +434,8 @@ n25dModel* n25dLoadFromMemory(int8_t* dataC, int32_t dataLenMax)
 				int32_t part_points = p_n25dModel->nPart[cur_part].pointcount;
 				if (part_points <= 0 || part_points > (int32_t)N25D_FILE_MAX_POINTS)
 					goto fail;
-				//Remaining fixed fields (17 ints) + vertex payload must fit
-				if (dataLen + 17 * (int32_t)sizeof(int32_t) + part_points * 9 * (int32_t)sizeof(float) > dataLenMax)
+				//Remaining fixed fields (16 ints) + vertex payload must fit (int64 to avoid wrap on big buffers)
+				if ((int64_t)dataLen + 16 * (int64_t)sizeof(int32_t) + (int64_t)part_points * 9 * (int64_t)sizeof(float) > (int64_t)dataLenMax)
 					goto fail;
 				dataLen = n25dFileHelperGet_int32(dataC, &p_n25dModel->nPart[cur_part].DrawOrder, dataLen);
 				dataLen = n25dFileHelperGet_f32(dataC, &p_n25dModel->nPart[cur_part].x, dataLen); //x
@@ -459,7 +468,8 @@ n25dModel* n25dLoadFromMemory(int8_t* dataC, int32_t dataLenMax)
 				//reallocate memory for all meshes
 				n25dMeshReallocateMemory(&p_n25dModel->nPart[cur_part].n25dMeshOrigin, p_n25dModel->nPart[cur_part].n25dMeshOrigin.pointcount);
 				n25dMeshReallocateMemory(&p_n25dModel->nPart[cur_part].n25dMeshTransform, p_n25dModel->nPart[cur_part].n25dMeshTransform.pointcount);
-				if (p_n25dModel->nPart[cur_part].n25dMeshOrigin.x == NULL || p_n25dModel->nPart[cur_part].n25dMeshTransform.x == NULL)
+				if (!n25dMeshAllArraysAllocated(&p_n25dModel->nPart[cur_part].n25dMeshOrigin) ||
+					!n25dMeshAllArraysAllocated(&p_n25dModel->nPart[cur_part].n25dMeshTransform))
 					goto fail;
 				//Get vertex data
 				for (int i2 = 0; i2 < p_n25dModel->nPart[cur_part].pointcount; i2++)
@@ -490,13 +500,14 @@ n25dModel* n25dLoadFromMemory(int8_t* dataC, int32_t dataLenMax)
 				dataLen = n25dFileHelperGet_int32(dataC, &MeshParamCount, dataLen);
 				if (MeshParamCount < 0 || MeshParamCount > (int32_t)N25D_FILE_MAX_PART_PARAMS)
 					goto fail;
-				//Each param: 4 floats per vertex + 2 angle floats, plus texture id on version 2
-				if (dataLen + MeshParamCount * (part_points * 4 * (int32_t)sizeof(float) + 2 * (int32_t)sizeof(float)) +
-					(Header.n25dFileVersion >= 2 ? (int32_t)sizeof(int32_t) : 0) > dataLenMax)
+				//Each param: 4 floats per vertex + 2 angle floats, plus texture id on version 2 (int64 to avoid wrap)
+				if ((int64_t)dataLen + (int64_t)MeshParamCount * ((int64_t)part_points * 4 * (int64_t)sizeof(float) + 2 * (int64_t)sizeof(float)) +
+					(Header.n25dFileVersion >= 2 ? (int64_t)sizeof(int32_t) : 0) > (int64_t)dataLenMax)
 					goto fail;
 				for (int i2 = 0; i2 < MeshParamCount; i2++)
 				{
-					n25dPartParamNew(&p_n25dModel->nPart[cur_part]);
+					if (n25dPartParamNew(&p_n25dModel->nPart[cur_part]) != 0)
+						goto fail;
 					for (int i3 = 0; i3 < p_n25dModel->nPart[cur_part].n25dMeshOrigin.pointcount; i3++)
 					{
 						dataLen = n25dFileHelperGet_f32(dataC, &p_n25dModel->nPart[cur_part].n25dMeshParam[i2].x_hi[i3], dataLen);

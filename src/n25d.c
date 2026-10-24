@@ -442,7 +442,10 @@ void* n25dMemoryDynHelper(void* MemPointer, size_t MemorySize, int32_t* MaximumM
 		*MaximumMemory += MemoryStep;
 		void* tmp = realloc(MemPointer, (*MaximumMemory) * MemorySize);
 		if (tmp == NULL)
+		{
+			*MaximumMemory -= MemoryStep; //Roll back, realloc failed
 			return NULL;// failed
+		}
 		else
 			return tmp;
 	}
@@ -501,7 +504,7 @@ int32_t n25dModelParamNew(n25dModel* p_n25dModel, float default_param, float min
 	p_n25dModel->nParamC++;
 	return p_n25dModel->nParamC - 1;
 }
-void n25dPartParamNew(n25dPart* pPart)
+int32_t n25dPartParamNew(n25dPart* pPart)
 {
 	if (pPart->n25dMeshParam == NULL)//allocate memory
 		pPart->n25dMeshParam = n25dMemoryDynHelper(pPart->n25dMeshParam, sizeof(n25dMatrixTransform),
@@ -509,10 +512,8 @@ void n25dPartParamNew(n25dPart* pPart)
 	if (pPart->n25dMeshParamC == pPart->n25dMeshParamCMAX)//Allocate more memory if need
 		pPart->n25dMeshParam = n25dMemoryDynHelper(pPart->n25dMeshParam, sizeof(n25dMatrixTransform),
 			&pPart->n25dMeshParamCMAX, MAX_ALLOC_N25D_PARAMS);
-
-	assert(pPart->n25dMeshParam != NULL);//Part is not initialized or out of memory
-
-	assert(pPart->n25dMeshParamC < pPart->n25dMeshParamCMAX); //Param counter overflow
+	if (pPart->n25dMeshParam == NULL || pPart->n25dMeshParamC >= pPart->n25dMeshParamCMAX)
+		return -1;//Part is not initialized or out of memory
 
 															  //rotation
 	pPart->n25dMeshParam[pPart->n25dMeshParamC].angle_hi = 0.0f;
@@ -526,7 +527,13 @@ void n25dPartParamNew(n25dPart* pPart)
 		pPart->n25dMeshParam[pPart->n25dMeshParamC].y_hi == NULL ||
 		pPart->n25dMeshParam[pPart->n25dMeshParamC].x_low == NULL ||
 		pPart->n25dMeshParam[pPart->n25dMeshParamC].y_low == NULL)
-		return;
+	{
+		free(pPart->n25dMeshParam[pPart->n25dMeshParamC].x_hi);
+		free(pPart->n25dMeshParam[pPart->n25dMeshParamC].y_hi);
+		free(pPart->n25dMeshParam[pPart->n25dMeshParamC].x_low);
+		free(pPart->n25dMeshParam[pPart->n25dMeshParamC].y_low);
+		return -1;
+	}
 	for (int i = 0; i < pPart->pointcount; i++)
 	{
 		pPart->n25dMeshParam[pPart->n25dMeshParamC].x_hi[i] = 0.0f;
@@ -536,6 +543,7 @@ void n25dPartParamNew(n25dPart* pPart)
 	}
 
 	pPart->n25dMeshParamC++;
+	return 0;
 }
 //Assign control
 void n25dPartSetParamVertexPos(n25dModel* p_n25dModel, int32_t n25dPartID, int32_t ParamID, int32_t Key, int32_t v, float x, float y)

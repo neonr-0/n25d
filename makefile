@@ -3,26 +3,23 @@ INCLUDE=-I./headers -I./depends
 CFLAGS= $(INCLUDE)
 AR=ar
 LDFLAGS=
-SOURCES = *.c
+SOURCES = n25d.c n25dfile.c
 TARGET=builds/n25d.a
 
-
-OBJECTS = $(shell echo src/$(SOURCES) | sed -e 's,\.c,\.o,g')
-#OBJECTS=$(SOURCES:.c=.o)
+OBJECTS = $(addprefix src/,$(SOURCES:.c=.o))
 
 all: $(TARGET)
 
-$(TARGET): $(OBJECTS) 
+$(TARGET): $(OBJECTS)
+	mkdir -p builds
 	$(AR) crv $@ $^
+
 #library
-
-libn25d: n25d.o n25dfile.o
+libn25d: $(OBJECTS)
 	$(AR) crv $@ $^
 
-n25d.o: src/n25d.c $(CFLAGS)
-	$(CC) -o n25d.o
-n25dfile.o: src/n25dfile.c $(CFLAGS)
-	$(CC) -o n25dfile.o
+src/%.o: src/%.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
 #Model editor
 #n25dmodeleditor : n25dgl.o kbd.o command.o display.o \
@@ -33,25 +30,24 @@ n25dfile.o: src/n25dfile.c $(CFLAGS)
 n25dgl.o : n25dgl.c $(CFLAGS)
 	$(CC) -o n25dgl.o
 
-
 utils.o : utils.c defs.h
 	cc -c utils.c
 
-.PHONY: test test-odr test-all
+.PHONY: test test-odr test-all clean
 
 #Tests
 test:
 	@fails=0; \
 	for t in $(filter-out test/odr_%,$(wildcard test/*.c)); do \
 		bin=$$(basename $$t .c); \
-		if $(CC) $(CFLAGS) -o /tmp/$$bin $$t src/n25d.c src/n25dfile.c -lm 2>/dev/null; then \
-			if /tmp/$$bin > /tmp/$$bin.out 2>&1; then \
+		if $(CC) $(CFLAGS) -o /tmp/$$bin $$t src/n25d.c src/n25dfile.c -lm 2> /tmp/$$bin.err; then \
+			if /tmp/$$bin > /tmp/$$bin.out 2> /tmp/$$bin.run.err; then \
 				echo "PASS $$bin"; \
 			else \
-				echo "FAIL $$bin"; cat /tmp/$$bin.out; fails=1; \
+				echo "FAIL $$bin"; cat /tmp/$$bin.out /tmp/$$bin.run.err; fails=1; \
 			fi; \
 		else \
-			echo "COMPILE FAIL $$bin"; fails=1; \
+			echo "COMPILE FAIL $$bin"; cat /tmp/$$bin.err; fails=1; \
 		fi; \
 	done; \
 	exit $$fails
@@ -67,4 +63,3 @@ test-all: test test-odr
 
 clean:
 	rm -rf $(TARGET) $(OBJECTS)
- 
