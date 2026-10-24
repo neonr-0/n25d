@@ -37,5 +37,34 @@ n25dgl.o : n25dgl.c $(CFLAGS)
 utils.o : utils.c defs.h
 	cc -c utils.c
 
+.PHONY: test test-odr test-all
+
+#Tests
+test:
+	@fails=0; \
+	for t in $(filter-out test/odr_%,$(wildcard test/*.c)); do \
+		bin=$$(basename $$t .c); \
+		if $(CC) $(CFLAGS) -o /tmp/$$bin $$t src/n25d.c src/n25dfile.c -lm 2>/dev/null; then \
+			if /tmp/$$bin > /tmp/$$bin.out 2>&1; then \
+				echo "PASS $$bin"; \
+			else \
+				echo "FAIL $$bin"; cat /tmp/$$bin.out; fails=1; \
+			fi; \
+		else \
+			echo "COMPILE FAIL $$bin"; fails=1; \
+		fi; \
+	done; \
+	exit $$fails
+
+#ODR check: byte_order.h must be includable from many translation units
+test-odr:
+	$(CC) $(CFLAGS) -c test/odr_a.c -o /tmp/odr_a.o
+	$(CC) $(CFLAGS) -c test/odr_b.c -o /tmp/odr_b.o
+	$(CC) $(CFLAGS) -o /tmp/odr_link /tmp/odr_a.o /tmp/odr_b.o test/odr_main.c src/n25d.c src/n25dfile.c -lm
+	/tmp/odr_link
+
+test-all: test test-odr
+
 clean:
-	rm -rf $(TARGET) $(OBJECTS) 
+	rm -rf $(TARGET) $(OBJECTS)
+ 
