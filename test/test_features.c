@@ -62,7 +62,7 @@ int main(void)
         n25dModel* m = n25dModelNew(10,10);
         n25dModelSetName(m, "abc", 3);
         n25dPartNew(m, n25dTexture_id(1), 0,0,10,10);
-        n25dModelParamNew(m, 0,0,1);
+        n25dModelParamNew(m, "NPARAM_ANGLE_Z", 14, 0, 0, 1);
         int32_t len = 0;
         int8_t* buf = n25dSaveToMemory(m, &len);
         n25dModel* l = n25dLoadFromMemory(buf, len);

@@ -16,7 +16,7 @@ int main(void)
     n25dPartNew(m, n25dTexture_id(1), 0, 0, 100, 100);  // part0
     int32_t c = n25dPartNew(m, n25dTexture_id(2), 100, 0, 100, 50); // part1 child
     n25dPartAddRotaryParent(m, c, 0);
-    int32_t p = n25dModelParamNew(m, 0.0f, -1.0f, 1.0f);
+    int32_t p = n25dModelParamNew(m, "NPARAM_ANGLE_X", 14, 0.0f, -1.0f, 1.0f);
     n25dPartSetParamRotate(m, 0, p, 0, 0.0f);
     n25dPartSetParamRotate(m, 0, p, 1, (float)(M_PI/2));
     n25dModelTransformationBegin(m);

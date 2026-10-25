@@ -34,7 +34,7 @@
 
 //Definitions
 #define n25dSignature 0xFE0D2525
-#define n25dVersionFile 2UL //v2: per-part texture id in file
+#define n25dVersionFile 2UL //v2: per-part texture id + named params (name_len + name + def/min/max)
 #define MAX_BUFFER 15360 //15Kb initial buffer
 #define MAX_MODEL_NAME 8192
 

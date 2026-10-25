@@ -8,7 +8,7 @@ int main(void)
 {
     n25dModel *m = n25dModelNew(100, 100);
     n25dPartNew(m, n25dTexture_id(7), 10, 20, 50, 50);
-    n25dModelParamNew(m, 0.0f, -1.0f, 1.0f);
+    n25dModelParamNew(m, "NPARAM_ANGLE_X", 14, 0.0f, -1.0f, 1.0f);
     int32_t len = 0;
     int8_t *buf = n25dSaveToMemory(m, &len);
     n25dModel *l = n25dLoadFromMemory(buf, len);

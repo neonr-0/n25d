@@ -398,6 +398,12 @@ void n25dModelFree(n25dModel* p_n25dModel)
 		n25dMeshFree(&pPart->n25dMeshOrigin);
 		n25dMeshFree(&pPart->n25dMeshTransform);
 	}
+	//nParam may be NULL with nParamC > 0 after a grow OOM; guard the deref
+	if (p_n25dModel->nParam != NULL)
+	{
+		for (int32_t i = 0; i < p_n25dModel->nParamC; i++)
+			free(p_n25dModel->nParam[i].name);
+	}
 	free(p_n25dModel->nPart);
 	free(p_n25dModel->nParam);
 	free(p_n25dModel->nModelName);
@@ -480,8 +486,12 @@ void n25dPartAddRotaryParent(n25dModel* p_n25dModel, int32_t n25dPartID, int32_t
 }
 #pragma endregion RotationControl
 #pragma region ParamsModifier
-int32_t n25dModelParamNew(n25dModel* p_n25dModel, float default_param, float min_param, float max_param)
+int32_t n25dModelParamNew(n25dModel* p_n25dModel, char* name, int32_t name_len, float default_param, float min_param, float max_param)
 {
+	if (p_n25dModel == NULL)
+		return -1;
+	if (name_len < 0 || name_len > (int32_t)MAX_PARAM_NAME || (name_len > 0 && name == NULL))
+		return -1;
 	if (p_n25dModel->nParam == NULL)//allocate memory
 		p_n25dModel->nParam = n25dMemoryDynHelper(p_n25dModel->nParam, sizeof(n25dParam),
 			&p_n25dModel->nParamCMAX, MAX_ALLOC_N25D_PARAMS);
@@ -489,20 +499,73 @@ int32_t n25dModelParamNew(n25dModel* p_n25dModel, float default_param, float min
 		p_n25dModel->nParam = n25dMemoryDynHelper(p_n25dModel->nParam, sizeof(n25dParam),
 			&p_n25dModel->nParamCMAX, MAX_ALLOC_N25D_PARAMS);
 
-	assert(p_n25dModel->nParam != NULL);//Part is not initialized or out of memory
+	assert(p_n25dModel->nParam != NULL);//Param is not initialized or out of memory
 
 	if (p_n25dModel->nParam == NULL) return -1;//this section need error handling
 
 	assert(p_n25dModel->nParamC < p_n25dModel->nParamCMAX); //Param counter overflow
 
-	p_n25dModel->nParam[p_n25dModel->nParamC].param_cur = default_param;
-	p_n25dModel->nParam[p_n25dModel->nParamC].param_min = min_param;
-	p_n25dModel->nParam[p_n25dModel->nParamC].param_max = max_param;
+	//Initialize the new param slot (append-only: index nParamC is never reused)
+	n25dParam* p = &p_n25dModel->nParam[p_n25dModel->nParamC];
+	p->param_min = min_param;
+	p->param_max = max_param;
+	//Clamp the default into range so param_cur == param_def at creation
+	if (default_param < min_param) default_param = min_param;
+	if (default_param > max_param) default_param = max_param;
+	p->param_cur = default_param;
+	p->param_def = default_param;
+	//Name: length is authoritative, NUL terminator is for debug convenience
+	p->name = NULL;
+	p->name_len = 0;
+	if (name_len > 0)
+	{
+		p->name = (char*)malloc((size_t)name_len + 1);
+		if (p->name == NULL)
+			return -1;//slot not counted, no part slots added yet
+		memcpy(p->name, name, (size_t)name_len);
+		p->name[name_len] = '\0';
+		p->name_len = name_len;
+	}
 	//Add params to all parts
 	for (int i = 0; i < p_n25dModel->nPartCount; i++)
 		n25dPartParamNew(&p_n25dModel->nPart[i]);
 	p_n25dModel->nParamC++;
 	return p_n25dModel->nParamC - 1;
+}
+
+int32_t n25dModelGetParamID(n25dModel* p_n25dModel, char* name, int32_t name_len)
+{
+	if (p_n25dModel == NULL || name_len <= 0 || name == NULL)
+		return -1;
+	for (int32_t i = 0; i < p_n25dModel->nParamC; i++)
+	{
+		if (p_n25dModel->nParam[i].name_len == name_len &&
+			memcmp(p_n25dModel->nParam[i].name, name, (size_t)name_len) == 0)
+			return i;
+	}
+	return -1;
+}
+
+void n25dModelSetParam(n25dModel* p_n25dModel, int32_t ParamID, float value)
+{
+	if (p_n25dModel == NULL || ParamID < 0 || ParamID >= p_n25dModel->nParamC)
+		return;
+	n25dParam* p = &p_n25dModel->nParam[ParamID];
+	if (value >= p->param_max)
+		value = p->param_max;
+	if (value <= p->param_min)
+		value = p->param_min;
+	p->param_cur = value;
+}
+
+void n25dModelApplyParams(n25dModel* p_n25dModel)
+{
+	if (p_n25dModel == NULL)
+		return;
+	n25dModelTransformationBegin(p_n25dModel);
+	for (int32_t i = 0; i < p_n25dModel->nParamC; i++)
+		n25dModelTransformation(p_n25dModel, i, p_n25dModel->nParam[i].param_cur);
+	n25dModelTransformationEnd(p_n25dModel);
 }
 int32_t n25dPartParamNew(n25dPart* pPart)
 {
@@ -638,6 +701,9 @@ void n25dModelTransformation(n25dModel* p_n25dModel, int32_t ParamID, float f_pa
 	//Calculate transformation for each part of this parameter
 	for (int i = 0; i < p_n25dModel->nPartCount; i++)
 	{
+		//Part may not be bound to this param (fewer mesh params than the model)
+		if (p_n25dModel->nPart[i].n25dMeshParam == NULL || p_n25dModel->nPart[i].n25dMeshParamC <= ParamID)
+			continue;
 		//Calculate angle for all parts in this parameter
 		float tangle = 0.0f;
 		if (f_param > 0.0f)

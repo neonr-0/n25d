@@ -9,7 +9,7 @@ int main(void)
     n25dModel *m = n25dModelNew(100, 100);
     n25dModelSetName(m, "HELLO", 5);
     int32_t p0 = n25dPartNew(m, n25dTexture_id(7), 10, 20, 50, 50);
-    int32_t param = n25dModelParamNew(m, 0.0f, -1.0f, 1.0f);
+    int32_t param = n25dModelParamNew(m, "NPARAM_MOUTH", 12, 0.0f, -1.0f, 1.0f);
     (void)param;
     printf("created: part=%d param=%d nameLen=%d name='%.*s'\n",
            p0, param, m->nModelNameLen, m->nModelNameLen, m->nModelName);

@@ -39,6 +39,9 @@ struct n25dParam
 	float param_cur;
 	float param_min;
 	float param_max;
+	float param_def;   // default/reset value; == param_cur at creation
+	char*   name;      // stable identity; NULL when name_len == 0
+	int32_t name_len;  // name length in bytes (authoritative, no NUL required)
 };
 typedef struct n25dParam n25dParam;
 //////////////////////////////////////////////////////////////////////////

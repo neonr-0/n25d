@@ -43,6 +43,7 @@
 #define MAX_ALLOC_N25D_OBJ 10
 #define MAX_ALLOC_N25D_PARTS 16
 #define MAX_ALLOC_N25D_PARAMS 40
+#define MAX_PARAM_NAME 128 //max parameter name length in bytes (enforced by n25dModelParamNew + loader)
 
 //////////////////////////////////////////////////////////////////////////
 // n25dModelNew(float width, float height);
@@ -178,15 +179,46 @@ void n25dPartAddRotaryParent(n25dModel* p_n25dModel, int32_t n25dPartID, int32_t
 //////////////////////////////////////////////////////////////////////////
 
 //////////////////////////////////////////////////////////////////////////
-// n25dModelParamNew(n25dModel* p_n25dModel, float default_param, float min_param, float max_param);
+// n25dModelParamNew(n25dModel* p_n25dModel, char* name, int32_t name_len, float default_param, float min_param, float max_param);
 // return parameter ID
 //	parameters:
 //				p_n25dModel - pointer to allocated model (to allocate new model use function n25dModelNew())
+//				name - parameter name (stable identity); may be NULL when name_len == 0
+//				name_len - name length in bytes (authoritative, no NUL required)
 //				default_param - default parameter
 //				min_param - minimum parameter
 //				max_param - maximum parameter
 //////////////////////////////////////////////////////////////////////////
-int32_t n25dModelParamNew(n25dModel* p_n25dModel, float default_param, float min_param, float max_param);
+int32_t n25dModelParamNew(n25dModel* p_n25dModel, char* name, int32_t name_len, float default_param, float min_param, float max_param);
+
+//////////////////////////////////////////////////////////////////////////
+// n25dModelGetParamID(n25dModel* p_n25dModel, char* name, int32_t name_len);
+// return parameter ID, or -1 if not found
+//	parameters:
+//				p_n25dModel - pointer to allocated model
+//				name - parameter name to look up
+//				name_len - name length in bytes
+//////////////////////////////////////////////////////////////////////////
+int32_t n25dModelGetParamID(n25dModel* p_n25dModel, char* name, int32_t name_len);
+
+//////////////////////////////////////////////////////////////////////////
+// n25dModelSetParam(n25dModel* p_n25dModel, int32_t ParamID, float value);
+// no return data
+//	parameters:
+//				p_n25dModel - pointer to allocated model
+//				ParamID - parameter ID
+//				value - new value (clamped to [min,max]); does not recompute the mesh
+//////////////////////////////////////////////////////////////////////////
+void n25dModelSetParam(n25dModel* p_n25dModel, int32_t ParamID, float value);
+
+//////////////////////////////////////////////////////////////////////////
+// n25dModelApplyParams(n25dModel* p_n25dModel);
+// no return data
+//	parameters:
+//				p_n25dModel - pointer to allocated model
+//	recomputes all transformed meshes from current param values
+//////////////////////////////////////////////////////////////////////////
+void n25dModelApplyParams(n25dModel* p_n25dModel);
 
 //////////////////////////////////////////////////////////////////////////
 // n25dPartSetParamVertexPos(n25dModel* p_n25dModel, int32_t n25dPartID, int32_t ParamID, int32_t Key, int32_t v, float x, float y);

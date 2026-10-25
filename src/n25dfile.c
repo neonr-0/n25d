@@ -249,7 +249,12 @@ int8_t* n25dSaveToMemory(n25dModel* p_n25dModel, int32_t* out_dataLen)
 		dataC = n25dSaveBufferGrow(dataC, dataLen, &dataLenMax);
 		if (dataC == NULL) goto savefail;
 		dataLen = n25dFileHelperAdd_int32(dataC, n25FileT_ModelParam_next, dataLen);
-		dataLen = n25dFileHelperAdd_f32(dataC, p_n25dModel->nParam[i].param_cur, dataLen);
+		//v2: name_len + name + def/min/max
+		int32_t name_len = p_n25dModel->nParam[i].name_len;
+		dataLen = n25dFileHelperAdd_int32(dataC, name_len, dataLen);
+		if (name_len > 0)
+			dataLen = n25dFileHelperAdd_blob(dataC, p_n25dModel->nParam[i].name, name_len, dataLen);
+		dataLen = n25dFileHelperAdd_f32(dataC, p_n25dModel->nParam[i].param_def, dataLen);
 		dataLen = n25dFileHelperAdd_f32(dataC, p_n25dModel->nParam[i].param_min, dataLen);
 		dataLen = n25dFileHelperAdd_f32(dataC, p_n25dModel->nParam[i].param_max, dataLen);
 	}
@@ -412,14 +417,42 @@ n25dModel* n25dLoadFromMemory(int8_t* dataC, int32_t dataLenMax)
 			}
 			case n25FileT_ModelParam_next: //ModelParam block
 			{
-				if (dataLen + 3 * (int32_t)sizeof(float) > dataLenMax)
-					goto fail;
-				float param_cur, param_min, param_max;
-				dataLen = n25dFileHelperGet_f32(dataC, &param_cur, dataLen);
-				dataLen = n25dFileHelperGet_f32(dataC, &param_min, dataLen);
-				dataLen = n25dFileHelperGet_f32(dataC, &param_max, dataLen);
-				if (n25dModelParamNew(p_n25dModel, param_cur, param_min, param_max) < 0)
-					goto fail;
+				if (Header.n25dFileVersion == 1)
+				{
+					//v1: cur + min + max (unnamed)
+					if ((int64_t)dataLen + 3 * (int32_t)sizeof(float) > (int64_t)dataLenMax)
+						goto fail;
+					float param_cur, param_min, param_max;
+					dataLen = n25dFileHelperGet_f32(dataC, &param_cur, dataLen);
+					dataLen = n25dFileHelperGet_f32(dataC, &param_min, dataLen);
+					dataLen = n25dFileHelperGet_f32(dataC, &param_max, dataLen);
+					if (n25dModelParamNew(p_n25dModel, NULL, 0, param_cur, param_min, param_max) < 0)
+						goto fail;
+				}
+				else
+				{
+					//v2: name_len + name + def + min + max
+					if ((int64_t)dataLen + (int32_t)sizeof(int32_t) > (int64_t)dataLenMax)
+						goto fail;
+					int32_t name_len = 0;
+					dataLen = n25dFileHelperGet_int32(dataC, &name_len, dataLen);
+					if (name_len < 0 || name_len > (int32_t)MAX_PARAM_NAME)
+						goto fail;
+					if ((int64_t)dataLen + name_len + 3 * (int32_t)sizeof(float) > (int64_t)dataLenMax)
+						goto fail;
+					char name_buf[MAX_PARAM_NAME + 1];
+					if (name_len > 0)
+					{
+						dataLen = n25dFileHelperGet_blob(dataC, name_buf, name_len, dataLen);
+						name_buf[name_len] = '\0';
+					}
+					float param_def, param_min, param_max;
+					dataLen = n25dFileHelperGet_f32(dataC, &param_def, dataLen);
+					dataLen = n25dFileHelperGet_f32(dataC, &param_min, dataLen);
+					dataLen = n25dFileHelperGet_f32(dataC, &param_max, dataLen);
+					if (n25dModelParamNew(p_n25dModel, name_buf, name_len, param_def, param_min, param_max) < 0)
+						goto fail;
+				}
 				break;
 			}
 			case n25FileT_ModelPart_next: //ModelParts block

@@ -9,7 +9,7 @@ int main(void)
     n25dModel *m = n25dModelNew(100, 100);
     n25dModelSetName(m, "HELLO", 5);
     n25dPartNew(m, n25dTexture_id(1), 10, 20, 50, 50);
-    n25dModelParamNew(m, 0.5f, -1.0f, 1.0f);
+    n25dModelParamNew(m, "NPARAM_BREATH", 13, 0.5f, -1.0f, 1.0f);
     int32_t len = 0;
     int8_t *buf = n25dSaveToMemory(m, &len);
     printf("saved %d bytes\n", len);
