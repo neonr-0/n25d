@@ -34,13 +34,14 @@
 
 //Definitions
 #define n25dSignature 0xFE0D2525
-#define n25dVersionFile 2UL //v2: per-part texture id + named params (name_len + name + def/min/max)
+#define n25dVersionFile 2UL //v2: per-part texture id + named params (name_len + name + def/min/max) + poses
 #define MAX_BUFFER 15360 //15Kb initial buffer
 #define MAX_MODEL_NAME 8192
 
 //File format limits
 #define N25D_FILE_MAX_POINTS 65536
 #define N25D_FILE_MAX_PART_PARAMS 4096
+#define N25D_FILE_MAX_POSE_ENTRIES 4096
 
 struct n25dFileHeader
 {
@@ -51,19 +52,22 @@ struct n25dFileHeader
 	int32_t n25dModelPartCount;
 	//Parameters count
 	int32_t n25dModelParamCount;
-	//Model name
-	int32_t Reserved;
+	//Pose count (v2; 0 in v1 / no-pose files)
+	int32_t n25dModelPoseCount;
 };
 typedef struct n25dFileHeader n25dFileHeader;
 
 enum n25FileT
 {
-	n25FileT_ModelName,
-	n25FileT_ModelParts,
-	n25FileT_ModelPart_next,
-	n25FileT_ModelParams,
-	n25FileT_ModelParam_next,
-	n25FileT_EOF,
+	n25FileT_ModelName = 0,
+	n25FileT_ModelParts = 1,
+	n25FileT_ModelPart_next = 2,
+	n25FileT_ModelParams = 3,
+	n25FileT_ModelParam_next = 4,
+	n25FileT_EOF = 5,
+	// v2 additive (written before the EOF marker in the byte stream)
+	n25FileT_ModelPoses = 6,
+	n25FileT_ModelPose_next = 7,
 };
 
 //////////////////////////////////////////////////////////////////////////

@@ -229,7 +229,7 @@ int8_t* n25dSaveToMemory(n25dModel* p_n25dModel, int32_t* out_dataLen)
 	Header.n25dFileVersion = htofl(n25dVersionFile);
 	Header.n25dModelPartCount = htofl(p_n25dModel->nPartCount);
 	Header.n25dModelParamCount = htofl(p_n25dModel->nParamC);
-	Header.Reserved = (int32_t)0;
+	Header.n25dModelPoseCount = htofl(p_n25dModel->nPoseC);
 	int32_t headersize = sizeof(Header);
 	dataLen = n25dFileHelperAdd_blob(dataC, &Header, headersize, dataLen);
 
@@ -323,6 +323,27 @@ int8_t* n25dSaveToMemory(n25dModel* p_n25dModel, int32_t* out_dataLen)
 		dataLen = n25dFileHelperAdd_int32(dataC, (int32_t)p_n25dModel->nPart[i].TextureID.id, dataLen);
 	}
 
+	//Next block (Poses)
+	dataLen = n25dFileHelperAdd_int32(dataC, n25FileT_ModelPoses, dataLen);
+	for (int i = 0; i < p_n25dModel->nPoseC; i++)
+	{
+		dataC = n25dSaveBufferGrow(dataC, dataLen, &dataLenMax);
+		if (dataC == NULL) goto savefail;
+		dataLen = n25dFileHelperAdd_int32(dataC, n25FileT_ModelPose_next, dataLen);
+		int32_t name_len = p_n25dModel->nPose[i].name_len;
+		dataLen = n25dFileHelperAdd_int32(dataC, name_len, dataLen);
+		if (name_len > 0)
+			dataLen = n25dFileHelperAdd_blob(dataC, p_n25dModel->nPose[i].name, name_len, dataLen);
+		dataLen = n25dFileHelperAdd_int32(dataC, p_n25dModel->nPose[i].entryC, dataLen);
+		for (int i2 = 0; i2 < p_n25dModel->nPose[i].entryC; i2++)
+		{
+			dataC = n25dSaveBufferGrow(dataC, dataLen, &dataLenMax);
+			if (dataC == NULL) goto savefail;
+			dataLen = n25dFileHelperAdd_int32(dataC, p_n25dModel->nPose[i].entries[i2].param_id, dataLen);
+			dataLen = n25dFileHelperAdd_f32(dataC, p_n25dModel->nPose[i].entries[i2].value, dataLen);
+		}
+	}
+
 	dataLen = n25dFileHelperAdd_int32(dataC, n25FileT_EOF, dataLen);
 	*out_dataLen = dataLen;
 	return dataC;
@@ -369,7 +390,7 @@ n25dModel* n25dLoadFromMemory(int8_t* dataC, int32_t dataLenMax)
 	Header.n25dFileVersion = (int32_t)ftohl((uint32_t)Header.n25dFileVersion);
 	Header.n25dModelPartCount = (int32_t)ftohl((uint32_t)Header.n25dModelPartCount);
 	Header.n25dModelParamCount = (int32_t)ftohl((uint32_t)Header.n25dModelParamCount);
-	Header.Reserved = (int32_t)ftohl((uint32_t)Header.Reserved);
+	Header.n25dModelPoseCount = (int32_t)ftohl((uint32_t)Header.n25dModelPoseCount);
 
 	//Verify signature and file version (v1 files are still readable, they just have no texture ids)
 	if (Header.n25dIdentify != (int32_t)n25dSignature)
@@ -384,6 +405,7 @@ n25dModel* n25dLoadFromMemory(int8_t* dataC, int32_t dataLenMax)
 
 	//Get blocks
 	int32_t n25FileTdata = (int32_t)-1;
+	int8_t sawEOF = 0;
 
 	while (dataLen + (int32_t)sizeof(int32_t) <= dataLenMax)
 	{
@@ -563,14 +585,66 @@ n25dModel* n25dLoadFromMemory(int8_t* dataC, int32_t dataLenMax)
 				break;
 			}
 
+			case n25FileT_ModelPose_next: //ModelPose block (v2)
+			{
+				//Bound streaming pose count by the header: reject an extra pose marker
+				//before it allocates (v1 files have count 0 and no pose markers by design)
+				if (Header.n25dModelPoseCount >= 0 && p_n25dModel->nPoseC >= Header.n25dModelPoseCount)
+					goto fail;
+				if ((int64_t)dataLen + (int32_t)sizeof(int32_t) > (int64_t)dataLenMax)
+					goto fail;
+				int32_t name_len = 0;
+				dataLen = n25dFileHelperGet_int32(dataC, &name_len, dataLen);
+				if (name_len < 0 || name_len > (int32_t)MAX_POSE_NAME)
+					goto fail;
+				if ((int64_t)dataLen + name_len + (int64_t)sizeof(int32_t) > (int64_t)dataLenMax)
+					goto fail;
+				char name_buf[MAX_POSE_NAME + 1];
+				if (name_len > 0)
+				{
+					dataLen = n25dFileHelperGet_blob(dataC, name_buf, name_len, dataLen);
+					name_buf[name_len] = '\0';
+				}
+				int32_t entry_count = 0;
+				dataLen = n25dFileHelperGet_int32(dataC, &entry_count, dataLen);
+				if (entry_count < 0 || entry_count > (int32_t)N25D_FILE_MAX_POSE_ENTRIES)
+					goto fail;
+				//Each entry: param_id (i32) + value (f32) (int64 to avoid wrap on big buffers)
+				if ((int64_t)dataLen + (int64_t)entry_count * ((int64_t)sizeof(int32_t) + (int64_t)sizeof(float)) > (int64_t)dataLenMax)
+					goto fail;
+				int32_t pose_id = n25dModelPoseNew(p_n25dModel, name_buf, name_len);
+				if (pose_id < 0)
+					goto fail;
+				for (int i2 = 0; i2 < entry_count; i2++)
+				{
+					int32_t param_id = 0;
+					float value = 0.0f;
+					dataLen = n25dFileHelperGet_int32(dataC, &param_id, dataLen);
+					dataLen = n25dFileHelperGet_f32(dataC, &value, dataLen);
+					//n25dModelPoseAddParam validates param_id < nParamC (params load before poses)
+					if (n25dModelPoseAddParam(p_n25dModel, pose_id, param_id, value) < 0)
+						goto fail;
+				}
+				break;
+			}
+
+			case n25FileT_EOF: //EOF terminator marker
+				sawEOF = 1;
+				break;
+
 			default:
 				break;
 		}
 	}
 
+	//A well-formed file ends with the EOF marker (reject truncated streams)
+	if (!sawEOF)
+		goto fail;
+
 	//Cross-check parsed counts against header (catches stream desync)
 	if (p_n25dModel->nPartCount != Header.n25dModelPartCount ||
-		p_n25dModel->nParamC != Header.n25dModelParamCount)
+		p_n25dModel->nParamC != Header.n25dModelParamCount ||
+		p_n25dModel->nPoseC != Header.n25dModelPoseCount)
 		goto fail;
 
 	return p_n25dModel;

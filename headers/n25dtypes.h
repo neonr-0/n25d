@@ -118,6 +118,26 @@ struct n25dPart
 };
 typedef struct n25dPart n25dPart;
 //////////////////////////////////////////////////////////////////////////
+// n25dPose - a named bundle of (param_id -> value) pairs. A saved pose of
+// the param bus.
+//////////////////////////////////////////////////////////////////////////
+struct n25dPoseParam
+{
+	int32_t param_id;
+	float value;
+};
+typedef struct n25dPoseParam n25dPoseParam;
+
+struct n25dPose
+{
+	char*   name;      // stable identity; NULL when name_len == 0
+	int32_t name_len;  // name length in bytes (authoritative, no NUL required)
+	n25dPoseParam* entries;
+	int32_t entryC;
+	int32_t entryCMAX;
+};
+typedef struct n25dPose n25dPose;
+//////////////////////////////////////////////////////////////////////////
 // n25dModel 
 //////////////////////////////////////////////////////////////////////////
 struct n25dModel
@@ -139,9 +159,13 @@ struct n25dModel
 	int32_t nParamCMAX;
 	//Model name
 	int32_t nModelNameLen;
+	//Poses (named param-value bundles)
+	int32_t nPoseC;
+	int32_t nPoseCMAX;
 	//Pointers
 	n25dParam* nParam;
 	n25dPart* nPart;
+	n25dPose* nPose;
 	char* nModelName;
 };
 typedef struct n25dModel n25dModel;

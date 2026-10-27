@@ -44,6 +44,9 @@
 #define MAX_ALLOC_N25D_PARTS 16
 #define MAX_ALLOC_N25D_PARAMS 40
 #define MAX_PARAM_NAME 128 //max parameter name length in bytes (enforced by n25dModelParamNew + loader)
+#define MAX_POSE_NAME 128 //max pose name length in bytes (enforced by n25dModelPoseNew + loader)
+#define MAX_ALLOC_N25D_POSES 8
+#define MAX_ALLOC_N25D_POSE_ENTRIES 8
 
 //////////////////////////////////////////////////////////////////////////
 // n25dModelNew(float width, float height);
@@ -219,6 +222,50 @@ void n25dModelSetParam(n25dModel* p_n25dModel, int32_t ParamID, float value);
 //	recomputes all transformed meshes from current param values
 //////////////////////////////////////////////////////////////////////////
 void n25dModelApplyParams(n25dModel* p_n25dModel);
+
+//////////////////////////////////////////////////////////////////////////
+// n25dModelPoseNew(n25dModel* p_n25dModel, char* name, int32_t name_len);
+// return pose ID, or -1 on failure
+//	parameters:
+//				p_n25dModel - pointer to allocated model
+//				name - pose name (stable identity); may be NULL when name_len == 0
+//				name_len - name length in bytes (authoritative, no NUL required)
+//	Creates an empty pose (no param entries yet); add them with n25dModelPoseAddParam.
+//////////////////////////////////////////////////////////////////////////
+int32_t n25dModelPoseNew(n25dModel* p_n25dModel, char* name, int32_t name_len);
+
+//////////////////////////////////////////////////////////////////////////
+// n25dModelPoseAddParam(n25dModel* p_n25dModel, int32_t poseID, int32_t paramID, float value);
+// return 0 on success, -1 on failure
+//	parameters:
+//				p_n25dModel - pointer to allocated model
+//				poseID - pose ID (from n25dModelPoseNew)
+//				paramID - parameter ID (from n25dModelGetParamID)
+//				value - value to set when the pose is applied
+//	Appends one (param -> value) entry. Duplicates are allowed; last wins on apply.
+//////////////////////////////////////////////////////////////////////////
+int32_t n25dModelPoseAddParam(n25dModel* p_n25dModel, int32_t poseID, int32_t paramID, float value);
+
+//////////////////////////////////////////////////////////////////////////
+// n25dModelGetPoseID(n25dModel* p_n25dModel, char* name, int32_t name_len);
+// return pose ID, or -1 if not found
+//	parameters:
+//				p_n25dModel - pointer to allocated model
+//				name - pose name to look up
+//				name_len - name length in bytes
+//////////////////////////////////////////////////////////////////////////
+int32_t n25dModelGetPoseID(n25dModel* p_n25dModel, char* name, int32_t name_len);
+
+//////////////////////////////////////////////////////////////////////////
+// n25dModelApplyPose(n25dModel* p_n25dModel, int32_t poseID);
+// no return data
+//	parameters:
+//				p_n25dModel - pointer to allocated model
+//				poseID - pose ID
+//	Sets each of the pose's params (clamped to [min,max]) and recomputes all
+//	meshes. Params not in the pose are left unchanged (partial override).
+//////////////////////////////////////////////////////////////////////////
+void n25dModelApplyPose(n25dModel* p_n25dModel, int32_t poseID);
 
 //////////////////////////////////////////////////////////////////////////
 // n25dPartSetParamVertexPos(n25dModel* p_n25dModel, int32_t n25dPartID, int32_t ParamID, int32_t Key, int32_t v, float x, float y);

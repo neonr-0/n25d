@@ -48,11 +48,12 @@ int main(void)
         expect_ok("empty-valid", n25dLoadFromMemory(g, 24), 0);
     }
     {
+        // Header only, no marker stream and no EOF terminator -> truncated -> NULL
         int8_t g[20];
         memset(g, 0, sizeof(g));
         memcpy(g, "\x25\x25\x0d\xfe", 4);
         g[4]=1;
-        expect_ok("header-only", n25dLoadFromMemory(g, 20), 0);
+        expect_null("header-only", n25dLoadFromMemory(g, 20));
     }
     {
         n25dModel* m = n25dModelNew(10,10);

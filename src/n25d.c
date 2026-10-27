@@ -60,6 +60,10 @@ n25dModel* n25dModelInit(n25dModel* p_n25dmodel, float width, float height)
 	p_n25dmodel->nParamCMAX = (int32_t)0;
 	p_n25dmodel->nModelName = (void*)0;
 	p_n25dmodel->nModelNameLen = (int32_t)0;
+	//poses
+	p_n25dmodel->nPose = (void*)0;
+	p_n25dmodel->nPoseC = (int32_t)0;
+	p_n25dmodel->nPoseCMAX = (int32_t)0;
 	return p_n25dmodel;
 }
 n25dModel* n25dModelNew(float width, float height)
@@ -404,8 +408,18 @@ void n25dModelFree(n25dModel* p_n25dModel)
 		for (int32_t i = 0; i < p_n25dModel->nParamC; i++)
 			free(p_n25dModel->nParam[i].name);
 	}
+	//nPose may be NULL with nPoseC > 0 after a grow OOM; guard the deref
+	if (p_n25dModel->nPose != NULL)
+	{
+		for (int32_t i = 0; i < p_n25dModel->nPoseC; i++)
+		{
+			free(p_n25dModel->nPose[i].name);
+			free(p_n25dModel->nPose[i].entries);
+		}
+	}
 	free(p_n25dModel->nPart);
 	free(p_n25dModel->nParam);
+	free(p_n25dModel->nPose);
 	free(p_n25dModel->nModelName);
 	free(p_n25dModel);
 }
@@ -566,6 +580,86 @@ void n25dModelApplyParams(n25dModel* p_n25dModel)
 	for (int32_t i = 0; i < p_n25dModel->nParamC; i++)
 		n25dModelTransformation(p_n25dModel, i, p_n25dModel->nParam[i].param_cur);
 	n25dModelTransformationEnd(p_n25dModel);
+}
+
+int32_t n25dModelPoseNew(n25dModel* p_n25dModel, char* name, int32_t name_len)
+{
+	if (p_n25dModel == NULL)
+		return -1;
+	if (name_len < 0 || name_len > (int32_t)MAX_POSE_NAME || (name_len > 0 && name == NULL))
+		return -1;
+	if (p_n25dModel->nPose == NULL)//allocate memory
+		p_n25dModel->nPose = n25dMemoryDynHelper(p_n25dModel->nPose, sizeof(n25dPose),
+			&p_n25dModel->nPoseCMAX, MAX_ALLOC_N25D_POSES);
+	if (p_n25dModel->nPoseC == p_n25dModel->nPoseCMAX)//Allocate more memory if need
+		p_n25dModel->nPose = n25dMemoryDynHelper(p_n25dModel->nPose, sizeof(n25dPose),
+			&p_n25dModel->nPoseCMAX, MAX_ALLOC_N25D_POSES);
+	if (p_n25dModel->nPose == NULL) return -1;
+
+	//Initialize the new pose slot (append-only: index nPoseC is never reused)
+	n25dPose* p = &p_n25dModel->nPose[p_n25dModel->nPoseC];
+	p->name = NULL;
+	p->name_len = 0;
+	p->entries = NULL;
+	p->entryC = 0;
+	p->entryCMAX = 0;
+	if (name_len > 0)
+	{
+		//Name: length is authoritative, NUL terminator is for debug convenience
+		p->name = (char*)malloc((size_t)name_len + 1);
+		if (p->name == NULL)
+			return -1;
+		memcpy(p->name, name, (size_t)name_len);
+		p->name[name_len] = '\0';
+		p->name_len = name_len;
+	}
+	p_n25dModel->nPoseC++;
+	return p_n25dModel->nPoseC - 1;
+}
+
+int32_t n25dModelPoseAddParam(n25dModel* p_n25dModel, int32_t poseID, int32_t paramID, float value)
+{
+	if (p_n25dModel == NULL || p_n25dModel->nPose == NULL)
+		return -1;
+	if (poseID < 0 || poseID >= p_n25dModel->nPoseC)
+		return -1;
+	if (paramID < 0 || paramID >= p_n25dModel->nParamC)
+		return -1;
+	n25dPose* p = &p_n25dModel->nPose[poseID];
+	if (p->entryC == p->entryCMAX)//Allocate more memory if need
+		p->entries = n25dMemoryDynHelper(p->entries, sizeof(n25dPoseParam),
+			&p->entryCMAX, MAX_ALLOC_N25D_POSE_ENTRIES);
+	if (p->entries == NULL)
+		return -1;
+	p->entries[p->entryC].param_id = paramID;
+	p->entries[p->entryC].value = value;
+	p->entryC++;
+	return 0;
+}
+
+int32_t n25dModelGetPoseID(n25dModel* p_n25dModel, char* name, int32_t name_len)
+{
+	if (p_n25dModel == NULL || name_len <= 0 || name == NULL)
+		return -1;
+	for (int32_t i = 0; i < p_n25dModel->nPoseC; i++)
+	{
+		if (p_n25dModel->nPose[i].name_len == name_len &&
+			memcmp(p_n25dModel->nPose[i].name, name, (size_t)name_len) == 0)
+			return i;
+	}
+	return -1;
+}
+
+void n25dModelApplyPose(n25dModel* p_n25dModel, int32_t poseID)
+{
+	if (p_n25dModel == NULL || p_n25dModel->nPose == NULL)
+		return;
+	if (poseID < 0 || poseID >= p_n25dModel->nPoseC)
+		return;
+	n25dPose* p = &p_n25dModel->nPose[poseID];
+	for (int32_t i = 0; i < p->entryC; i++)
+		n25dModelSetParam(p_n25dModel, p->entries[i].param_id, p->entries[i].value);
+	n25dModelApplyParams(p_n25dModel);
 }
 int32_t n25dPartParamNew(n25dPart* pPart)
 {
