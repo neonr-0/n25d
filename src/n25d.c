@@ -28,6 +28,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <assert.h>
+#include <math.h>
 #include "n25d.h"
 
 //Macros
@@ -42,7 +43,42 @@
 n25dModel* n25dModelInit(n25dModel* p_n25dmodel, float width, float height);
 void n25dMeshNew(n25dPart* p_n25dPart, n25dMesh* p_n25Mesh, float x, float y, float width, float height);
 void n25dPartParamTransitionTransform(n25dPart* pPart, int32_t ParamID, float f_param);
-void n25dPartParamRotationTransform(n25dPart* pPart, mat4* mRotation, float f_angle);
+void n25dPartParamRotationTransform(n25dPart* pPart, n25dAffine* mRotation, float f_angle);
+
+//Internal 2D affine helpers (file-local).
+//Convention: n25dAffineMul(out, a, b) computes out = a * b, meaning b is applied
+//first, then a, so (a*b)*p == a*(b*p).
+static void n25dAffineSetIdentity(n25dAffine* a)
+{
+	a->m00 = 1.0f; a->m01 = 0.0f; a->m02 = 0.0f;
+	a->m10 = 0.0f; a->m11 = 1.0f; a->m12 = 0.0f;
+}
+static void n25dAffineSetPivotRotate(n25dAffine* a, float cx, float cy, float angle)
+{
+	//Rotation about pivot (cx,cy) by angle (radians), rotation about the -Z axis:
+	//a relative vector (dx,dy) maps to (dx*cos+dy*sin, -dx*sin+dy*cos), so +90 deg
+	//maps (dx,dy) -> (dy,-dx). A point at the pivot maps to itself.
+	float s = sinf(angle);
+	float c = cosf(angle);
+	a->m00 = c;   a->m01 = s;  a->m02 = cx*(1.0f - c) - cy*s;
+	a->m10 = -s;  a->m11 = c;  a->m12 = cx*s + cy*(1.0f - c);
+}
+static void n25dAffineMul(n25dAffine* out, const n25dAffine* a, const n25dAffine* b)
+{
+	n25dAffine r;
+	r.m00 = a->m00*b->m00 + a->m01*b->m10;
+	r.m01 = a->m00*b->m01 + a->m01*b->m11;
+	r.m02 = a->m00*b->m02 + a->m01*b->m12 + a->m02;
+	r.m10 = a->m10*b->m00 + a->m11*b->m10;
+	r.m11 = a->m10*b->m01 + a->m11*b->m11;
+	r.m12 = a->m10*b->m02 + a->m11*b->m12 + a->m12;
+	*out = r;
+}
+static void n25dAffineTransformPoint(const n25dAffine* a, float x, float y, float* out_x, float* out_y)
+{
+	*out_x = a->m00*x + a->m01*y + a->m02;
+	*out_y = a->m10*x + a->m11*y + a->m12;
+}
 
 n25dModel* n25dModelInit(n25dModel* p_n25dmodel, float width, float height)
 {
@@ -122,7 +158,7 @@ int32_t n25dPartNew(n25dModel* p_n25dModel, n25dTexture in_texture, float x, flo
 	p_n25dModel->nPart[p_n25dModel->nPartCount].angle = 0.0f;
 	p_n25dModel->nPart[p_n25dModel->nPartCount].ParentPartID = 0; //also used for rotation tree
 	p_n25dModel->nPart[p_n25dModel->nPartCount].ParentPartIDC = 0;
-	glm_mat4_identity(p_n25dModel->nPart[p_n25dModel->nPartCount].RotationMatrix);//identify matrix for rotation tree
+	n25dAffineSetIdentity(&p_n25dModel->nPart[p_n25dModel->nPartCount].RotationMatrix);//identity matrix for rotation tree
 	//Params
 	p_n25dModel->nPart[p_n25dModel->nPartCount].n25dMeshParam = NULL;
 	p_n25dModel->nPart[p_n25dModel->nPartCount].n25dMeshParamC = 0;
@@ -767,7 +803,7 @@ void n25dModelTransformationBegin(n25dModel* p_n25dModel)
 	for (int i = 0; i < p_n25dModel->nPartCount; i++)
 	{
 		//reset all matrix
-		glm_mat4_identity(p_n25dModel->nPart[i].RotationMatrix);
+		n25dAffineSetIdentity(&p_n25dModel->nPart[i].RotationMatrix);
 		for (int i2 = 0; i2 < p_n25dModel->nPart[i].pointcount; i2++)
 		{
 			//Reset Transform array
@@ -822,11 +858,11 @@ void n25dModelTransformationEnd(n25dModel* p_n25dModel)
 			if (p_n25dModel->nPart[i].angle != 0.0f)
 			{
 				//Rotate only parents
-				mat4 model;
-				glm_mat4_identity(model);
+				n25dAffine model;
+				n25dAffineSetIdentity(&model);
 				n25dPartParamRotationTransform(&p_n25dModel->nPart[i], &model, p_n25dModel->nPart[i].angle);
 				//Store rotation matrix
-				glm_mat4_copy(model, p_n25dModel->nPart[i].RotationMatrix);
+				p_n25dModel->nPart[i].RotationMatrix = model;
 			}
 		}
 		//Collect maximum child count
@@ -839,12 +875,12 @@ void n25dModelTransformationEnd(n25dModel* p_n25dModel)
 			if (p_n25dModel->nPart[i].ParentPartIDC == i2)
 			{
 				//Rotate to each part of the parent's pivot point
-				mat4 model;
+				n25dAffine model;
 				//Get rotation matrix from parent
-				glm_mat4_copy(p_n25dModel->nPart[p_n25dModel->nPart[i].ParentPartID].RotationMatrix, model);
+				model = p_n25dModel->nPart[p_n25dModel->nPart[i].ParentPartID].RotationMatrix;
 				n25dPartParamRotationTransform(&p_n25dModel->nPart[i], &model, p_n25dModel->nPart[i].angle);
 				//Store rotation matrix
-				glm_mat4_copy(model, p_n25dModel->nPart[i].RotationMatrix);
+				p_n25dModel->nPart[i].RotationMatrix = model;
 			}
 		}
 }
@@ -853,59 +889,50 @@ void n25dPartParamTransitionTransform(n25dPart* pPart, int32_t ParamID, float f_
 {
 	if (f_param != 0.0f)
 	{
+		//The hi/low choice depends only on f_param (the caller guarantees f_param != 0),
+		//so pick the offset arrays once, outside the vertex loop.
+		const float* ox;
+		const float* oy;
+		if (f_param > 0.0f)
+		{
+			//Translate coordinates by params (offset for this vertex, scaled by param)
+			ox = pPart->n25dMeshParam[ParamID].x_hi;
+			oy = pPart->n25dMeshParam[ParamID].y_hi;
+		}
+		else //f_param < 0.0f
+		{
+			ox = pPart->n25dMeshParam[ParamID].x_low;
+			oy = pPart->n25dMeshParam[ParamID].y_low;
+		}
 		//Vertex transforming (Translation)
 		for (int i = 0; i < pPart->pointcount; i++)
 		{
-			float tx = pPart->n25dMeshTransform.x[i];
-			float ty = pPart->n25dMeshTransform.y[i];
-			//Set translation matrix for this vertex
-			mat4 m;
-			glm_mat4_identity(m);
-			vec4 mvec = { pPart->n25dMeshTransform.x[i], pPart->n25dMeshTransform.y[i] , 0.0f ,1.0f };
-			//Translate coordinates by params
-			if (f_param > 0.0f)
-			{
-				tx = pPart->n25dMeshParam[ParamID].x_hi[i];
-				ty = pPart->n25dMeshParam[ParamID].y_hi[i];
-			}
-			else if (f_param < 0.0f)
-			{
-				tx = pPart->n25dMeshParam[ParamID].x_low[i];
-				ty = pPart->n25dMeshParam[ParamID].y_low[i];
-			}
-			tx = tx * f_param;
-			ty = ty * f_param;
-			vec3 tvec = { tx, ty, 0.0f };
-			glm_translate(m, tvec);
-			vec4 destvec = { 0.0f,0.0f,0.0f,0.0f };
-			glm_mat4_mulv(m, mvec, destvec);
-			//Update vertex transition
-			pPart->n25dMeshTransform.x[i] = destvec[0];
-			pPart->n25dMeshTransform.y[i] = destvec[1];
+			//Update vertex transition (identity+translate matrix applied to the vertex = plain add)
+			pPart->n25dMeshTransform.x[i] += ox[i] * f_param;
+			pPart->n25dMeshTransform.y[i] += oy[i] * f_param;
 		}
 	}
 }
-void n25dPartParamRotationTransform(n25dPart* pPart, mat4* mRotation, float f_angle)
+void n25dPartParamRotationTransform(n25dPart* pPart, n25dAffine* mRotation, float f_angle)
 {
-	mat4 m;
+	//Effective rotation center is (-anchor_x, +anchor_y) (the x negation is deliberate).
+	//Prepend the pivot rotation: mNew = P * (*mRotation), so the existing transform is
+	//applied first, then the rotation about the pivot.
+	n25dAffine mNew;
+	n25dAffineSetPivotRotate(&mNew, -pPart->anchor_x, pPart->anchor_y, f_angle);
+	n25dAffineMul(&mNew, &mNew, mRotation);
 	//Vertex transforming
 	for (int i = 0; i < pPart->pointcount; i++)
 	{
-		float tx = pPart->n25dMeshTransform.x[i];
-		float ty = pPart->n25dMeshTransform.y[i];
-		//Get rotation matrix
-		glm_mat4_copy(*mRotation, m);
-		vec4 mvec = { pPart->n25dMeshTransform.x[i], pPart->n25dMeshTransform.y[i] , 0.0f , 1.0f };
-		//Rotate at point
-		glm_rotate_at(m, (vec3) { -pPart->anchor_x, pPart->anchor_y }, f_angle, (vec3) { 0.0f, 0.0f, -1.0f });
-		vec4 destvec = { 0.0f,0.0f,0.0f,0.0f };
-		glm_mat4_mulv(m, mvec, destvec);
+		float x;
+		float y;
+		n25dAffineTransformPoint(&mNew, pPart->n25dMeshTransform.x[i], pPart->n25dMeshTransform.y[i], &x, &y);
 		//Send to transform
-		pPart->n25dMeshTransform.x[i] = destvec[0];
-		pPart->n25dMeshTransform.y[i] = destvec[1];
+		pPart->n25dMeshTransform.x[i] = x;
+		pPart->n25dMeshTransform.y[i] = y;
 	}
 	//Save rotation matrix
-	glm_mat4_copy(m, *mRotation);
+	*mRotation = mNew;
 }
 #pragma endregion ParamsModifier
 

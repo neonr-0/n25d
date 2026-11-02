@@ -1,5 +1,5 @@
 CC=gcc
-INCLUDE=-I./headers -I./depends
+INCLUDE=-I./headers
 CFLAGS= $(INCLUDE)
 AR=ar
 LDFLAGS=

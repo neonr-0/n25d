@@ -86,6 +86,16 @@ struct n25dMatrixTransform
 };
 typedef struct n25dMatrixTransform n25dMatrixTransform;
 //////////////////////////////////////////////////////////////////////////
+// n25dAffine - 2D affine transform: row-major 2x2 linear part + 2D translation.
+// x' = m00*x + m01*y + m02 ; y' = m10*x + m11*y + m12
+// Composition a*b means: apply b first, then a, so (a*b)*p == a*(b*p).
+//////////////////////////////////////////////////////////////////////////
+typedef struct n25dAffine
+{
+	float m00, m01, m02;   // x' = m00*x + m01*y + m02
+	float m10, m11, m12;   // y' = m10*x + m11*y + m12
+} n25dAffine;
+//////////////////////////////////////////////////////////////////////////
 // n25dPart
 //////////////////////////////////////////////////////////////////////////
 struct n25dPart
@@ -105,7 +115,7 @@ struct n25dPart
 	float angle; //rotation angle in RADIANS, for child parts used sum all previous parents
 	int32_t ParentPartID;
 	int32_t ParentPartIDC; //internal counter Parent parts (rotation dependencies)
-	mat4 RotationMatrix; // rotation state (child parts use this matrix to rotate at pivot point)
+	n25dAffine RotationMatrix; // rotation state: 2D affine (rotation-about-pivot + translation; rigid for now, general 2x2+translation for future scale)
 	//box sprite (on this moment)
 	int32_t nMeshCount; //deprecated
 	n25dMesh n25dMeshTransform; //Transformed mesh (to render data)

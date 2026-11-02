@@ -1,8 +1,7 @@
 # n25d
 n25d is a skeletal mesh transforming library for 2D graphics.
 ## Dependencies
-n25d Library
-* cglm
+None (pure C, no external libraries)
 
 ## Build
 make it

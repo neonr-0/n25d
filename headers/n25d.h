@@ -31,8 +31,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#include <cglm/cglm.h>
-
 //Internal headers
 #include "n25dtypes.h"
 
