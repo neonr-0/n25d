@@ -42,20 +42,21 @@ static int32_t write_pose_prefix(int8_t* buf, int nparams, int header_pose_count
 	o = put32(buf, o, 0);          // part count 0
 	o = put32(buf, o, nparams);    // param count
 	o = put32(buf, o, header_pose_count); // pose count
-	o = put32(buf, o, 0);          // n25FileT_ModelName
+	o = put32(buf, o, 0);          // n25FileT_Begin
+	o = put32(buf, o, 1);          // n25FileT_ModelName
 	o = put32(buf, o, 0);          // name length 0
-	o = put32(buf, o, 3);          // n25FileT_ModelParams
+	o = put32(buf, o, 4);          // n25FileT_ModelParams
 	for (int i = 0; i < nparams; i++)
 	{
 		char nm[16]; int nl = snprintf(nm, sizeof nm, "NPARAM_%d", i);
-		o = put32(buf, o, 4);      // n25FileT_ModelParam_next
+		o = put32(buf, o, 5);      // n25FileT_ModelParam_next
 		o = put32(buf, o, nl);     // name_len
 		memcpy(buf + o, nm, (size_t)nl); o += nl;
 		o = putf32(buf, o, 0.0f);  // def
 		o = putf32(buf, o, -1.0f); // min
 		o = putf32(buf, o, 1.0f);  // max
 	}
-	o = put32(buf, o, 1);          // n25FileT_ModelParts (0 parts)
+	o = put32(buf, o, 2);          // n25FileT_ModelParts (0 parts)
 	o = put32(buf, o, 6);          // n25FileT_ModelPoses
 	return o;
 }
@@ -202,7 +203,7 @@ int main(void)
 		int8_t buf[512];
 		memset(buf, 0, sizeof(buf));
 		int32_t o = write_pose_prefix(buf, 1, 0); // 1 param, header claims 0 poses
-		o = put32(buf, o, 5);          // n25FileT_EOF (no pose blocks)
+		o = put32(buf, o, 12);         // n25FileT_EOF (no pose blocks)
 		n25dModel* l = n25dLoadFromMemory(buf, o);
 		CHECK(l && l->nPoseC == 0, "zeropose: 0-pose file loads");
 		CHECK(l && l->nParamC == 1, "zeropose: param still loads");
@@ -219,7 +220,7 @@ int main(void)
 		o = put32(buf, o, 1);          // entry_count 1
 		o = put32(buf, o, 0);          // entry param_id 0
 		o = putf32(buf, o, 0.25f);     // entry value 0.25
-		o = put32(buf, o, 5);          // n25FileT_EOF
+		o = put32(buf, o, 12);         // n25FileT_EOF
 		n25dModel* l = n25dLoadFromMemory(buf, o);
 		CHECK(l && l->nPoseC == 1, "handcraft: pose loaded");
 		CHECK(l && l->nPose[0].name_len == 8 && memcmp(l->nPose[0].name, "NPOSE_OK", 8) == 0, "handcraft: name preserved");
@@ -237,7 +238,7 @@ int main(void)
 		// pad name to 8 bytes
 		o += 1;
 		o = put32(buf, o, N25D_FILE_MAX_POSE_ENTRIES + 1); // entry_count 4097
-		o = put32(buf, o, 5);          // EOF (no entry data)
+		o = put32(buf, o, 12);         // EOF (no entry data)
 		n25dModel* l = n25dLoadFromMemory(buf, o);
 		CHECK(l == NULL, "corrupt: entry_count too large -> NULL");
 		if (l) n25dModelFree(l);
@@ -253,7 +254,7 @@ int main(void)
 		o = put32(buf, o, 1);          // entry_count 1
 		o = put32(buf, o, 5);          // entry param_id 5 (only param 0 exists)
 		o = putf32(buf, o, 0.5f);
-		o = put32(buf, o, 5);          // EOF
+		o = put32(buf, o, 12);         // EOF
 		n25dModel* l = n25dLoadFromMemory(buf, o);
 		CHECK(l == NULL, "corrupt: pose param_id out of range -> NULL");
 		if (l) n25dModelFree(l);
@@ -283,7 +284,7 @@ int main(void)
 		o = put32(buf, o, 129);        // name_len 129 (> 128)
 		memset(buf + o, 'X', 129); o += 129;
 		o = put32(buf, o, 0);          // entry_count 0
-		o = put32(buf, o, 5);          // EOF
+		o = put32(buf, o, 12);         // EOF
 		n25dModel* l = n25dLoadFromMemory(buf, o);
 		CHECK(l == NULL, "corrupt: pose name_len 129 -> NULL");
 		if (l) n25dModelFree(l);
@@ -297,7 +298,7 @@ int main(void)
 		o = put32(buf, o, 8);
 		memcpy(buf + o, "NPOSE_ONE", 7); o += 7; o += 1;
 		o = put32(buf, o, 0);          // entry_count 0
-		o = put32(buf, o, 5);          // EOF
+		o = put32(buf, o, 12);         // EOF
 		n25dModel* l = n25dLoadFromMemory(buf, o);
 		CHECK(l == NULL, "corrupt: header pose count mismatch -> NULL");
 		if (l) n25dModelFree(l);
@@ -311,7 +312,7 @@ int main(void)
 		o = put32(buf, o, 8);
 		memcpy(buf + o, "NPOSE_XTR", 7); o += 7; o += 1;
 		o = put32(buf, o, 0);          // entry_count 0
-		o = put32(buf, o, 5);          // EOF
+		o = put32(buf, o, 12);         // EOF
 		n25dModel* l = n25dLoadFromMemory(buf, o);
 		CHECK(l == NULL, "streambound: header 0 poses but pose marker -> NULL");
 		if (l) n25dModelFree(l);
@@ -330,7 +331,7 @@ int main(void)
 			o = put32(buf, o, 0);     // param_id 0
 			o = putf32(buf, o, 0.5f); // value
 		}
-		o = put32(buf, o, 5);          // EOF
+		o = put32(buf, o, 12);         // EOF
 		n25dModel* l = n25dLoadFromMemory(buf, o);
 		CHECK(l && l->nPoseC == 1 && l->nPose[0].entryC == N25D_FILE_MAX_POSE_ENTRIES, "boundary: 4096 entries loads");
 		if (l) n25dModelFree(l);

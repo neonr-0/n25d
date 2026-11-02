@@ -233,6 +233,9 @@ int8_t* n25dSaveToMemory(n25dModel* p_n25dModel, int32_t* out_dataLen)
 	int32_t headersize = sizeof(Header);
 	dataLen = n25dFileHelperAdd_blob(dataC, &Header, headersize, dataLen);
 
+	//Begin marker: first token of the stream (symmetric with the EOF terminator)
+	dataLen = n25dFileHelperAdd_int32(dataC, n25FileT_Begin, dataLen);
+
 	//Next block (ModelName)
 	dataLen = n25dFileHelperAdd_int32(dataC, n25FileT_ModelName, dataLen);
 	char* ModelName = p_n25dModel->nModelName;
@@ -354,6 +357,55 @@ savefail:
 	return NULL;
 }
 //Loading
+//Semantic marker sections (layout-independent). The on-disk marker value
+//depends on the file version: v2 uses the n25FileT values (Begin first, EOF
+//last); v1 uses the original numbering (no Begin, EOF == 5).
+enum n25ParseSection
+{
+	N25PS_BEGIN = 0,
+	N25PS_NAME,
+	N25PS_PARTS,
+	N25PS_PART_NEXT,
+	N25PS_PARAMS,
+	N25PS_PARAM_NEXT,
+	N25PS_POSES,
+	N25PS_POSE_NEXT,
+	N25PS_GROUPS, // reserved section start (no payload yet)
+	N25PS_MOTIONS,// reserved section start (no payload yet)
+	N25PS_EOF,
+};
+static int32_t n25dMarkerToSection(int32_t raw, int8_t isV2)
+{
+	if (isV2)
+	{
+		switch (raw)
+		{
+		case (int32_t)n25FileT_Begin:          return N25PS_BEGIN;
+		case (int32_t)n25FileT_ModelName:      return N25PS_NAME;
+		case (int32_t)n25FileT_ModelParts:     return N25PS_PARTS;
+		case (int32_t)n25FileT_ModelPart_next: return N25PS_PART_NEXT;
+		case (int32_t)n25FileT_ModelParams:    return N25PS_PARAMS;
+		case (int32_t)n25FileT_ModelParam_next:return N25PS_PARAM_NEXT;
+		case (int32_t)n25FileT_ModelPoses:     return N25PS_POSES;
+		case (int32_t)n25FileT_ModelPose_next: return N25PS_POSE_NEXT;
+		case (int32_t)n25FileT_ModelGroups:    return N25PS_GROUPS;
+		case (int32_t)n25FileT_ModelMotions:   return N25PS_MOTIONS;
+		case (int32_t)n25FileT_EOF:            return N25PS_EOF;
+		default:                               return -1; // reserved _next + unknown
+		}
+	}
+	// v1 (original numbering)
+	switch (raw)
+	{
+	case 0: return N25PS_NAME;
+	case 1: return N25PS_PARTS;
+	case 2: return N25PS_PART_NEXT;
+	case 3: return N25PS_PARAMS;
+	case 4: return N25PS_PARAM_NEXT;
+	case 5: return N25PS_EOF;
+	default: return -1;
+	}
+}
 int32_t n25dLoadFromFileA(n25dModel** p_n25dModel, char* PathA)
 {
 	if (p_n25dModel == NULL)
@@ -404,15 +456,35 @@ n25dModel* n25dLoadFromMemory(int8_t* dataC, int32_t dataLenMax)
 		return NULL;
 
 	//Get blocks
-	int32_t n25FileTdata = (int32_t)-1;
+	int8_t isV2 = (Header.n25dFileVersion == 2);
+	int8_t firstMarker = 1;
+	int8_t sawBegin = 0;
 	int8_t sawEOF = 0;
 
 	while (dataLen + (int32_t)sizeof(int32_t) <= dataLenMax)
 	{
-		dataLen = n25dFileHelperGet_int32(dataC, &n25FileTdata, dataLen);
-		switch (n25FileTdata)
+		int32_t raw_marker = 0;
+		dataLen = n25dFileHelperGet_int32(dataC, &raw_marker, dataLen);
+		int32_t sec = n25dMarkerToSection(raw_marker, isV2);
+		if (sec == N25PS_BEGIN)
 		{
-			case n25FileT_ModelName: //ModelName block
+			//Begin must be the very first marker of the stream, exactly once
+			if (!firstMarker || sawBegin)
+				goto fail;
+			sawBegin = 1;
+			firstMarker = 0;
+			continue;
+		}
+		firstMarker = 0;
+		if (sec == N25PS_EOF)
+		{
+			//EOF must be the last token of the stream (trailing data is rejected after the loop)
+			sawEOF = 1;
+			break;
+		}
+		switch (sec)
+		{
+			case N25PS_NAME: //ModelName block
 			{
 				//Check string length
 				if (dataLen + (int32_t)sizeof(int32_t) > dataLenMax)
@@ -437,7 +509,7 @@ n25dModel* n25dLoadFromMemory(int8_t* dataC, int32_t dataLenMax)
 				}
 				break;
 			}
-			case n25FileT_ModelParam_next: //ModelParam block
+			case N25PS_PARAM_NEXT: //ModelParam block
 			{
 				if (Header.n25dFileVersion == 1)
 				{
@@ -477,7 +549,7 @@ n25dModel* n25dLoadFromMemory(int8_t* dataC, int32_t dataLenMax)
 				}
 				break;
 			}
-			case n25FileT_ModelPart_next: //ModelParts block
+			case N25PS_PART_NEXT: //ModelParts block
 			{
 				if (dataLen + (int32_t)sizeof(int32_t) > dataLenMax)
 					goto fail;
@@ -585,7 +657,7 @@ n25dModel* n25dLoadFromMemory(int8_t* dataC, int32_t dataLenMax)
 				break;
 			}
 
-			case n25FileT_ModelPose_next: //ModelPose block (v2)
+			case N25PS_POSE_NEXT: //ModelPose block (v2)
 			{
 				//Bound streaming pose count by the header: reject an extra pose marker
 				//before it allocates (v1 files have count 0 and no pose markers by design)
@@ -628,17 +700,21 @@ n25dModel* n25dLoadFromMemory(int8_t* dataC, int32_t dataLenMax)
 				break;
 			}
 
-			case n25FileT_EOF: //EOF terminator marker
-				sawEOF = 1;
+			case N25PS_PARTS:
+			case N25PS_PARAMS:
+			case N25PS_POSES:
+			case N25PS_GROUPS: // reserved section start (no payload yet)
+			case N25PS_MOTIONS:// reserved section start (no payload yet)
 				break;
 
 			default:
-				break;
+				goto fail; // unknown marker value
 		}
 	}
 
-	//A well-formed file ends with the EOF marker (reject truncated streams)
-	if (!sawEOF)
+	//A well-formed stream starts with the Begin marker (v2), ends with the EOF
+	//marker, and has nothing after it: reject truncated/desynced streams and trailing data
+	if (!sawEOF || (isV2 && !sawBegin) || dataLen != dataLenMax)
 		goto fail;
 
 	//Cross-check parsed counts against header (catches stream desync)

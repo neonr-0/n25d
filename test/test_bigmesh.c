@@ -13,7 +13,7 @@ int main(void)
     m->nPart[0].pointcount = 2000;
     int32_t len = 0;
     int8_t *buf = n25dSaveToMemory(m, &len);
-    /* v2: 20 hdr + 8 name + 4 partstype + [4 parttype + 44 + 24 + 72000 + 4 paramC + 4 tex] + 4 posetype + 4 EOF = 72124 */
-    printf("BIGMESH saved len=%d expected 72124\n", len);
-    return len == 72124 ? 0 : 1;
+    /* v2: 20 hdr + 4 begin + 8 name + 4 paramtype + 4 partstype + [4 parttype + 44 + 24 + 72000 + 4 paramC + 4 tex] + 4 posetype + 4 EOF = 72128 */
+    printf("BIGMESH saved len=%d expected 72128\n", len);
+    return len == 72128 ? 0 : 1;
 }

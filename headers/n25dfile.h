@@ -34,7 +34,7 @@
 
 //Definitions
 #define n25dSignature 0xFE0D2525
-#define n25dVersionFile 2UL //v2: per-part texture id + named params (name_len + name + def/min/max) + poses
+#define n25dVersionFile 2UL //v2: per-part texture id + named params (name_len + name + def/min/max) + poses; Begin..EOF marker stream
 #define MAX_BUFFER 15360 //15Kb initial buffer
 #define MAX_MODEL_NAME 8192
 
@@ -57,17 +57,27 @@ struct n25dFileHeader
 };
 typedef struct n25dFileHeader n25dFileHeader;
 
+//Marker stream layout (v2): Begin is the first token after the header, EOF is
+//the last token of the file. Values are stable within v2: the Groups and
+//Motions slots are reserved now so those sections can be added later without
+//renumbering. (v1 files use the original numbering: ModelName=0, ModelParts=1,
+//ModelPart_next=2, ModelParams=3, ModelParam_next=4, EOF=5.)
 enum n25FileT
 {
-	n25FileT_ModelName = 0,
-	n25FileT_ModelParts = 1,
-	n25FileT_ModelPart_next = 2,
-	n25FileT_ModelParams = 3,
-	n25FileT_ModelParam_next = 4,
-	n25FileT_EOF = 5,
-	// v2 additive (written before the EOF marker in the byte stream)
+	n25FileT_Begin = 0,
+	n25FileT_ModelName = 1,
+	n25FileT_ModelParts = 2,
+	n25FileT_ModelPart_next = 3,
+	n25FileT_ModelParams = 4,
+	n25FileT_ModelParam_next = 5,
 	n25FileT_ModelPoses = 6,
 	n25FileT_ModelPose_next = 7,
+	// reserved (not written by n25dSaveToMemory yet)
+	n25FileT_ModelGroups = 8,
+	n25FileT_ModelGroup_next = 9,
+	n25FileT_ModelMotions = 10,
+	n25FileT_ModelMotion_next = 11,
+	n25FileT_EOF = 12,
 };
 
 //////////////////////////////////////////////////////////////////////////

@@ -141,16 +141,17 @@ int main(void)
 		o = put32(v2, o, 0);          // part count 0
 		o = put32(v2, o, 1);          // param count 1
 		o += 4;                       // reserved
-		o = put32(v2, o, 0);          // n25FileT_ModelName
+		o = put32(v2, o, 0);          // n25FileT_Begin
+		o = put32(v2, o, 1);          // n25FileT_ModelName
 		o = put32(v2, o, 0);          // name length 0
-		o = put32(v2, o, 3);          // n25FileT_ModelParams
-		o = put32(v2, o, 4);          // n25FileT_ModelParam_next
+		o = put32(v2, o, 4);          // n25FileT_ModelParams
+		o = put32(v2, o, 5);          // n25FileT_ModelParam_next
 		o = put32(v2, o, (int32_t)MAX_PARAM_NAME + 1); // name_len too big
 		o += MAX_PARAM_NAME + 1;      // name bytes (padding)
 		o = putf32(v2, o, 0.0f);      // def
 		o = putf32(v2, o, -1.0f);     // min
 		o = putf32(v2, o, 1.0f);      // max
-		o = put32(v2, o, 5);          // n25FileT_EOF
+		o = put32(v2, o, 12);         // n25FileT_EOF
 		n25dModel* cap = n25dLoadFromMemory(v2, o);
 		CHECK(cap == NULL, "cap: name_len > MAX -> NULL");
 		if (cap) n25dModelFree(cap);
@@ -196,15 +197,16 @@ int main(void)
 		o = put32(v2neg, o, 0);          // part count 0
 		o = put32(v2neg, o, 1);          // param count 1
 		o += 4;                          // reserved
-		o = put32(v2neg, o, 0);          // n25FileT_ModelName
+		o = put32(v2neg, o, 0);          // n25FileT_Begin
+		o = put32(v2neg, o, 1);          // n25FileT_ModelName
 		o = put32(v2neg, o, 0);          // name length 0
-		o = put32(v2neg, o, 3);          // n25FileT_ModelParams
-		o = put32(v2neg, o, 4);          // n25FileT_ModelParam_next
+		o = put32(v2neg, o, 4);          // n25FileT_ModelParams
+		o = put32(v2neg, o, 5);          // n25FileT_ModelParam_next
 		o = put32(v2neg, o, -1);         // name_len = -1
 		o = putf32(v2neg, o, 0.0f);      // def
 		o = putf32(v2neg, o, -1.0f);     // min
 		o = putf32(v2neg, o, 1.0f);      // max
-		o = put32(v2neg, o, 5);          // n25FileT_EOF
+		o = put32(v2neg, o, 12);         // n25FileT_EOF
 		n25dModel* neg = n25dLoadFromMemory(v2neg, o);
 		CHECK(neg == NULL, "edge: negative name_len -> NULL");
 		if (neg) n25dModelFree(neg);
