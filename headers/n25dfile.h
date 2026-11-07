@@ -34,7 +34,7 @@
 
 //Definitions
 #define n25dSignature 0xFE0D2525
-#define n25dVersionFile 2UL //v2: per-part texture id + named params (name_len + name + def/min/max) + poses; Begin..EOF marker stream
+#define n25dVersionFile 2UL //v2: per-part texture id + named params (name_len + name + def/min/max) + poses + motions; Begin..EOF marker stream
 #define MAX_BUFFER 15360 //15Kb initial buffer
 #define MAX_MODEL_NAME 8192
 
@@ -42,6 +42,9 @@
 #define N25D_FILE_MAX_POINTS 65536
 #define N25D_FILE_MAX_PART_PARAMS 4096
 #define N25D_FILE_MAX_POSE_ENTRIES 4096
+#define N25D_FILE_MAX_MOTIONS        4096
+#define N25D_FILE_MAX_MOTION_CURVES  4096
+#define N25D_FILE_MAX_MOTION_KEYS    65536
 
 struct n25dFileHeader
 {
@@ -58,10 +61,10 @@ struct n25dFileHeader
 typedef struct n25dFileHeader n25dFileHeader;
 
 //Marker stream layout (v2): Begin is the first token after the header, EOF is
-//the last token of the file. Values are stable within v2: the Groups and
-//Motions slots are reserved now so those sections can be added later without
-//renumbering. (v1 files use the original numbering: ModelName=0, ModelParts=1,
-//ModelPart_next=2, ModelParams=3, ModelParam_next=4, EOF=5.)
+//the last token of the file. Values are stable within v2: the Groups slot is
+//reserved now so that section can be added later without renumbering (Motions
+//is written in v2). (v1 files use the original numbering: ModelName=0,
+//ModelParts=1, ModelPart_next=2, ModelParams=3, ModelParam_next=4, EOF=5.)
 enum n25FileT
 {
 	n25FileT_Begin = 0,
@@ -75,8 +78,8 @@ enum n25FileT
 	// reserved (not written by n25dSaveToMemory yet)
 	n25FileT_ModelGroups = 8,
 	n25FileT_ModelGroup_next = 9,
-	n25FileT_ModelMotions = 10,
-	n25FileT_ModelMotion_next = 11,
+	n25FileT_ModelMotions = 10,   // section start (no payload) - always written
+	n25FileT_ModelMotion_next = 11, // one per motion block
 	n25FileT_EOF = 12,
 };
 

@@ -100,6 +100,10 @@ n25dModel* n25dModelInit(n25dModel* p_n25dmodel, float width, float height)
 	p_n25dmodel->nPose = (void*)0;
 	p_n25dmodel->nPoseC = (int32_t)0;
 	p_n25dmodel->nPoseCMAX = (int32_t)0;
+	//motions
+	p_n25dmodel->nMotion = (void*)0;
+	p_n25dmodel->nMotionC = (int32_t)0;
+	p_n25dmodel->nMotionCMAX = (int32_t)0;
 	return p_n25dmodel;
 }
 n25dModel* n25dModelNew(float width, float height)
@@ -453,9 +457,24 @@ void n25dModelFree(n25dModel* p_n25dModel)
 			free(p_n25dModel->nPose[i].entries);
 		}
 	}
+	//nMotion may be NULL with nMotionC > 0 after a grow OOM; guard the deref
+	if (p_n25dModel->nMotion != NULL)
+	{
+		for (int32_t i = 0; i < p_n25dModel->nMotionC; i++)
+		{
+			if (p_n25dModel->nMotion[i].curves != NULL)
+			{
+				for (int32_t j = 0; j < p_n25dModel->nMotion[i].curveC; j++)
+					free(p_n25dModel->nMotion[i].curves[j].keys);
+				free(p_n25dModel->nMotion[i].curves);
+			}
+			free(p_n25dModel->nMotion[i].name);
+		}
+	}
 	free(p_n25dModel->nPart);
 	free(p_n25dModel->nParam);
 	free(p_n25dModel->nPose);
+	free(p_n25dModel->nMotion);
 	free(p_n25dModel->nModelName);
 	free(p_n25dModel);
 }
@@ -695,6 +714,299 @@ void n25dModelApplyPose(n25dModel* p_n25dModel, int32_t poseID)
 	n25dPose* p = &p_n25dModel->nPose[poseID];
 	for (int32_t i = 0; i < p->entryC; i++)
 		n25dModelSetParam(p_n25dModel, p->entries[i].param_id, p->entries[i].value);
+	n25dModelApplyParams(p_n25dModel);
+}
+//////////////////////////////////////////////////////////////////////////
+// Motion (keyframed param curves) section
+//////////////////////////////////////////////////////////////////////////
+int32_t n25dModelMotionNew(n25dModel* p_n25dModel, char* name, int32_t name_len)
+{
+	if (p_n25dModel == NULL)
+		return -1;
+	if (name_len < 0 || name_len > (int32_t)MAX_MOTION_NAME || (name_len > 0 && name == NULL))
+		return -1;
+	if (p_n25dModel->nMotion == NULL)//allocate memory
+		p_n25dModel->nMotion = n25dMemoryDynHelper(p_n25dModel->nMotion, sizeof(n25dMotion),
+			&p_n25dModel->nMotionCMAX, MAX_ALLOC_N25D_MOTIONS);
+	if (p_n25dModel->nMotionC == p_n25dModel->nMotionCMAX)//Allocate more memory if need
+		p_n25dModel->nMotion = n25dMemoryDynHelper(p_n25dModel->nMotion, sizeof(n25dMotion),
+			&p_n25dModel->nMotionCMAX, MAX_ALLOC_N25D_MOTIONS);
+	if (p_n25dModel->nMotion == NULL) return -1;
+
+	//Initialize the new motion slot (append-only: index nMotionC is never reused)
+	n25dMotion* mo = &p_n25dModel->nMotion[p_n25dModel->nMotionC];
+	mo->name = NULL;
+	mo->name_len = 0;
+	mo->curves = NULL;
+	mo->curveC = 0;
+	mo->curveCMAX = 0;
+	if (name_len > 0)
+	{
+		//Name: length is authoritative, NUL terminator is for debug convenience
+		mo->name = (char*)malloc((size_t)name_len + 1);
+		if (mo->name == NULL)
+			return -1;
+		memcpy(mo->name, name, (size_t)name_len);
+		mo->name[name_len] = '\0';
+		mo->name_len = name_len;
+	}
+	p_n25dModel->nMotionC++;
+	return p_n25dModel->nMotionC - 1;
+}
+
+int32_t n25dModelMotionAddCurve(n25dModel* p_n25dModel, int32_t motionID, int32_t paramID)
+{
+	if (p_n25dModel == NULL || p_n25dModel->nMotion == NULL)
+		return -1;
+	if (motionID < 0 || motionID >= p_n25dModel->nMotionC)
+		return -1;
+	if (paramID < 0 || paramID >= p_n25dModel->nParamC)
+		return -1;
+	n25dMotion* mo = &p_n25dModel->nMotion[motionID];
+	if (mo->curveC == mo->curveCMAX)//Allocate more memory if need
+		mo->curves = n25dMemoryDynHelper(mo->curves, sizeof(n25dMotionCurve),
+			&mo->curveCMAX, MAX_ALLOC_N25D_MOTION_CURVES);
+	if (mo->curves == NULL)
+		return -1;
+	n25dMotionCurve* c = &mo->curves[mo->curveC];
+	c->param_id = paramID;
+	c->keys = NULL;
+	c->keyC = 0;
+	c->keyCMAX = 0;
+	mo->curveC++;
+	return mo->curveC - 1;
+}
+
+int32_t n25dModelMotionCurveAddKey(n25dModel* p_n25dModel, int32_t motionID,
+									   int32_t curveIndex, float time, float value)
+{
+	if (p_n25dModel == NULL || p_n25dModel->nMotion == NULL)
+		return -1;
+	if (motionID < 0 || motionID >= p_n25dModel->nMotionC)
+		return -1;
+	n25dMotion* mo = &p_n25dModel->nMotion[motionID];
+	if (curveIndex < 0 || curveIndex >= mo->curveC)
+		return -1;
+	n25dMotionCurve* c = &mo->curves[curveIndex];
+	//Reject a non-finite key time: NaN slips past the sorted check below (NaN
+	//compares false both ways) and would break the sampler's binary search.
+	if (time != time)
+		return -1;
+	//Keys stay sorted: reject a key earlier than the current last key
+	if (c->keyC > 0 && time < c->keys[c->keyC - 1].time)
+		return -1;
+	if (c->keyC == c->keyCMAX)//Allocate more memory if need
+		c->keys = n25dMemoryDynHelper(c->keys, sizeof(n25dMotionKey),
+			&c->keyCMAX, MAX_ALLOC_N25D_MOTION_KEYS);
+	if (c->keys == NULL)
+		return -1;
+	c->keys[c->keyC].time = time;
+	c->keys[c->keyC].value = value;
+	c->keys[c->keyC].ease = (int32_t)N25EASE_LINEAR;
+	c->keys[c->keyC].bz[0] = 0.0f;
+	c->keys[c->keyC].bz[1] = 0.0f;
+	c->keys[c->keyC].bz[2] = 0.0f;
+	c->keys[c->keyC].bz[3] = 0.0f;
+	c->keyC++;
+	return 0;
+}
+
+int32_t n25dModelMotionCurveKeySetEase(n25dModel* p_n25dModel, int32_t motionID,
+										   int32_t curveIndex, int32_t keyIndex,
+										   int32_t ease,
+										   float bz0, float bz1, float bz2, float bz3)
+{
+	if (p_n25dModel == NULL || p_n25dModel->nMotion == NULL)
+		return -1;
+	if (motionID < 0 || motionID >= p_n25dModel->nMotionC)
+		return -1;
+	n25dMotion* mo = &p_n25dModel->nMotion[motionID];
+	if (curveIndex < 0 || curveIndex >= mo->curveC)
+		return -1;
+	n25dMotionCurve* c = &mo->curves[curveIndex];
+	if (keyIndex < 0 || keyIndex >= c->keyC)
+		return -1;
+	if (ease != (int32_t)N25EASE_LINEAR && ease != (int32_t)N25EASE_BEZIER)
+		return -1;
+	c->keys[keyIndex].ease = ease;
+	c->keys[keyIndex].bz[0] = bz0;
+	c->keys[keyIndex].bz[1] = bz1;
+	c->keys[keyIndex].bz[2] = bz2;
+	c->keys[keyIndex].bz[3] = bz3;
+	return 0;
+}
+
+int32_t n25dModelGetMotionID(n25dModel* p_n25dModel, char* name, int32_t name_len)
+{
+	if (p_n25dModel == NULL || name_len <= 0 || name == NULL)
+		return -1;
+	for (int32_t i = 0; i < p_n25dModel->nMotionC; i++)
+	{
+		if (p_n25dModel->nMotion[i].name_len == name_len &&
+			memcmp(p_n25dModel->nMotion[i].name, name, (size_t)name_len) == 0)
+			return i;
+	}
+	return -1;
+}
+
+int32_t n25dModelMotionGetCurveCount(n25dModel* p_n25dModel, int32_t motionID)
+{
+	if (p_n25dModel == NULL || p_n25dModel->nMotion == NULL)
+		return -1;
+	if (motionID < 0 || motionID >= p_n25dModel->nMotionC)
+		return -1;
+	return p_n25dModel->nMotion[motionID].curveC;
+}
+
+int32_t n25dModelMotionCurveGetParamID(n25dModel* p_n25dModel, int32_t motionID, int32_t curveIndex)
+{
+	if (p_n25dModel == NULL || p_n25dModel->nMotion == NULL)
+		return -1;
+	if (motionID < 0 || motionID >= p_n25dModel->nMotionC)
+		return -1;
+	n25dMotion* mo = &p_n25dModel->nMotion[motionID];
+	if (curveIndex < 0 || curveIndex >= mo->curveC)
+		return -1;
+	return mo->curves[curveIndex].param_id;
+}
+
+int32_t n25dModelMotionCurveGetKeyCount(n25dModel* p_n25dModel, int32_t motionID, int32_t curveIndex)
+{
+	if (p_n25dModel == NULL || p_n25dModel->nMotion == NULL)
+		return -1;
+	if (motionID < 0 || motionID >= p_n25dModel->nMotionC)
+		return -1;
+	n25dMotion* mo = &p_n25dModel->nMotion[motionID];
+	if (curveIndex < 0 || curveIndex >= mo->curveC)
+		return -1;
+	return mo->curves[curveIndex].keyC;
+}
+
+float n25dMotionGetDuration(n25dModel* p_n25dModel, int32_t motionID)
+{
+	if (p_n25dModel == NULL || p_n25dModel->nMotion == NULL)
+		return 0.0f;
+	if (motionID < 0 || motionID >= p_n25dModel->nMotionC)
+		return 0.0f;
+	n25dMotion* mo = &p_n25dModel->nMotion[motionID];
+	//Duration = max key time. Seed from the first key (not 0.0f) so it is
+	//correct when every key time is negative; 0.0f when the motion has no keys.
+	int have = 0;
+	float duration = 0.0f;
+	for (int32_t i = 0; i < mo->curveC; i++)
+	{
+		n25dMotionCurve* c = &mo->curves[i];
+		for (int32_t j = 0; j < c->keyC; j++)
+		{
+			if (!have || c->keys[j].time > duration)
+			{
+				duration = c->keys[j].time;
+				have = 1;
+			}
+		}
+	}
+	return duration;
+}
+
+//Cubic bezier solve as in CSS/WebKit: P0=(0,0), P3=(1,1), control points
+//(x1,y1),(x2,y2). Newton iteration on x(u) == t with a bisection fallback.
+static float n25dBezierSolveU(float x1, float x2, float t)
+{
+	float Ax = 3.0f * x1;
+	float Bx = 3.0f * (x2 - x1) - Ax;
+	float Cx = 1.0f - Ax - Bx;
+	float u = t;
+	int converged = 0;
+	for (int i = 0; i < 8; i++)
+	{
+		float bx = ((Cx * u + Bx) * u + Ax) * u - t;
+		if (fabsf(bx) < 1e-6f) { converged = 1; break; } // converged
+		float dx = (3.0f * Cx * u + 2.0f * Bx) * u + Ax;
+		if (fabsf(dx) < 1e-6f) break; // flat slope -> bisection fallback
+		u -= bx / dx;
+		if (u < 0.0f) u = 0.0f;
+		else if (u > 1.0f) u = 1.0f;
+	}
+	if (!converged) // Newton did not converge (slope break or 8 iters) -> bisect
+	{
+		float lo = 0.0f, hi = 1.0f;
+		for (int i = 0; i < 32; i++)
+		{
+			u = (lo + hi) * 0.5f;
+			float bx = ((Cx * u + Bx) * u + Ax) * u;
+			if (fabsf(bx - t) < 1e-6f) break;
+			if (bx < t) lo = u; else hi = u;
+		}
+	}
+	return u;
+}
+
+static float n25dBezierEase(float x1, float y1, float x2, float y2, float t)
+{
+	if (t <= 0.0f) return 0.0f;
+	if (t >= 1.0f) return 1.0f;
+	float u = n25dBezierSolveU(x1, x2, t);
+	float Ay = 3.0f * y1;
+	float By = 3.0f * (y2 - y1) - Ay;
+	float Cy = 1.0f - Ay - By;
+	return ((Cy * u + By) * u + Ay) * u;
+}
+
+float n25dMotionCurveValueAt(n25dModel* p_n25dModel, int32_t motionID,
+							   int32_t curveIndex, float time)
+{
+	if (p_n25dModel == NULL || p_n25dModel->nMotion == NULL)
+		return 0.0f;
+	if (motionID < 0 || motionID >= p_n25dModel->nMotionC)
+		return 0.0f;
+	n25dMotion* mo = &p_n25dModel->nMotion[motionID];
+	if (curveIndex < 0 || curveIndex >= mo->curveC)
+		return 0.0f;
+	n25dMotionCurve* c = &mo->curves[curveIndex];
+	int32_t n = c->keyC;
+	if (n == 0)
+		return 0.0f;
+	if (n == 1)
+		return c->keys[0].value;
+	//Hold at the ends of the key range
+	if (time <= c->keys[0].time)
+		return c->keys[0].value;
+	if (time >= c->keys[n - 1].time)
+		return c->keys[n - 1].value;
+	//Binary search: largest lo with keys[lo].time <= time (ends in [0, n-2])
+	int32_t lo = 0, hi = n - 2;
+	while (lo < hi)
+	{
+		int32_t mid = (lo + hi + 1) / 2;
+		if (c->keys[mid].time <= time)
+			lo = mid;
+		else
+			hi = mid - 1;
+	}
+	float t0 = c->keys[lo].time;
+	float v0 = c->keys[lo].value;
+	float t1 = c->keys[lo + 1].time;
+	float v1 = c->keys[lo + 1].value;
+	float span = t1 - t0;
+	float frac = (span <= 0.0f) ? 1.0f : (time - t0) / span;
+	float eased = (c->keys[lo].ease == (int32_t)N25EASE_BEZIER)
+		? n25dBezierEase(c->keys[lo].bz[0], c->keys[lo].bz[1], c->keys[lo].bz[2], c->keys[lo].bz[3], frac)
+		: frac;
+	return v0 + (v1 - v0) * eased;
+}
+
+void n25dModelSampleMotion(n25dModel* p_n25dModel, int32_t motionID, float time)
+{
+	if (p_n25dModel == NULL || p_n25dModel->nMotion == NULL)
+		return;
+	if (motionID < 0 || motionID >= p_n25dModel->nMotionC)
+		return;
+	n25dMotion* mo = &p_n25dModel->nMotion[motionID];
+	for (int32_t c = 0; c < mo->curveC; c++)
+	{
+		float v = n25dMotionCurveValueAt(p_n25dModel, motionID, c, time);
+		n25dModelSetParam(p_n25dModel, mo->curves[c].param_id, v);
+	}
 	n25dModelApplyParams(p_n25dModel);
 }
 int32_t n25dPartParamNew(n25dPart* pPart)

@@ -45,6 +45,10 @@
 #define MAX_POSE_NAME 128 //max pose name length in bytes (enforced by n25dModelPoseNew + loader)
 #define MAX_ALLOC_N25D_POSES 8
 #define MAX_ALLOC_N25D_POSE_ENTRIES 8
+#define MAX_MOTION_NAME 128 //max motion name length in bytes (enforced by n25dModelMotionNew + loader)
+#define MAX_ALLOC_N25D_MOTIONS 8
+#define MAX_ALLOC_N25D_MOTION_CURVES 8
+#define MAX_ALLOC_N25D_MOTION_KEYS 16
 
 //////////////////////////////////////////////////////////////////////////
 // n25dModelNew(float width, float height);
@@ -264,6 +268,137 @@ int32_t n25dModelGetPoseID(n25dModel* p_n25dModel, char* name, int32_t name_len)
 //	meshes. Params not in the pose are left unchanged (partial override).
 //////////////////////////////////////////////////////////////////////////
 void n25dModelApplyPose(n25dModel* p_n25dModel, int32_t poseID);
+
+//////////////////////////////////////////////////////////////////////////
+// n25dModelMotionNew(n25dModel* p_n25dModel, char* name, int32_t name_len);
+// return motion ID, or -1 on failure
+//	parameters:
+//				p_n25dModel - pointer to allocated model
+//				name - motion name (stable identity); may be NULL when name_len == 0
+//				name_len - name length in bytes (authoritative, no NUL required)
+//	Creates an empty motion (no curves yet); add them with n25dModelMotionAddCurve.
+//////////////////////////////////////////////////////////////////////////
+int32_t n25dModelMotionNew(n25dModel* p_n25dModel, char* name, int32_t name_len);
+
+//////////////////////////////////////////////////////////////////////////
+// n25dModelMotionAddCurve(n25dModel* p_n25dModel, int32_t motionID, int32_t paramID);
+// return curve index, or -1 on failure
+//	parameters:
+//				p_n25dModel - pointer to allocated model
+//				motionID - motion ID (from n25dModelMotionNew)
+//				paramID - parameter ID (from n25dModelGetParamID); must be valid
+//	Attaches a curve for paramID to the motion; add keys with n25dModelMotionCurveAddKey.
+//////////////////////////////////////////////////////////////////////////
+int32_t n25dModelMotionAddCurve(n25dModel* p_n25dModel, int32_t motionID, int32_t paramID);
+
+//////////////////////////////////////////////////////////////////////////
+// n25dModelMotionCurveAddKey(n25dModel* p_n25dModel, int32_t motionID, int32_t curveIndex, float time, float value);
+// return 0 on success, -1 on failure
+//	parameters:
+//				p_n25dModel - pointer to allocated model
+//				motionID - motion ID
+//				curveIndex - curve index (from n25dModelMotionAddCurve)
+//				time - key time in seconds
+//				value - parameter value at the key time
+//	Appends a key (defaults to N25EASE_LINEAR, bezier control points 0).
+//	Fails if time < the curve's current last key time (keys stay sorted).
+//////////////////////////////////////////////////////////////////////////
+int32_t n25dModelMotionCurveAddKey(n25dModel* p_n25dModel, int32_t motionID,
+									   int32_t curveIndex, float time, float value);
+
+//////////////////////////////////////////////////////////////////////////
+// n25dModelMotionCurveKeySetEase(n25dModel* p_n25dModel, int32_t motionID, int32_t curveIndex, int32_t keyIndex, int32_t ease, float bz0, float bz1, float bz2, float bz3);
+// return 0 on success, -1 on failure
+//	parameters:
+//				p_n25dModel - pointer to allocated model
+//				motionID - motion ID
+//				curveIndex - curve index
+//				keyIndex - key index within the curve
+//				ease - N25EASE_LINEAR or N25EASE_BEZIER (any other value fails);
+//					applies to the segment from this key to the next
+//				bz0..bz3 - bezier control points x1,y1,x2,y2 (meaningful for N25EASE_BEZIER only)
+//////////////////////////////////////////////////////////////////////////
+int32_t n25dModelMotionCurveKeySetEase(n25dModel* p_n25dModel, int32_t motionID,
+										   int32_t curveIndex, int32_t keyIndex,
+										   int32_t ease,
+										   float bz0, float bz1, float bz2, float bz3);
+
+//////////////////////////////////////////////////////////////////////////
+// n25dModelGetMotionID(n25dModel* p_n25dModel, char* name, int32_t name_len);
+// return motion ID, or -1 if not found
+//	parameters:
+//				p_n25dModel - pointer to allocated model
+//				name - motion name to look up
+//				name_len - name length in bytes
+//////////////////////////////////////////////////////////////////////////
+int32_t n25dModelGetMotionID(n25dModel* p_n25dModel, char* name, int32_t name_len);
+
+//////////////////////////////////////////////////////////////////////////
+// n25dModelMotionGetCurveCount(n25dModel* p_n25dModel, int32_t motionID);
+// return curve count, or -1 on a bad motion id
+//	parameters:
+//				p_n25dModel - pointer to allocated model
+//				motionID - motion ID
+//////////////////////////////////////////////////////////////////////////
+int32_t n25dModelMotionGetCurveCount(n25dModel* p_n25dModel, int32_t motionID);
+
+//////////////////////////////////////////////////////////////////////////
+// n25dModelMotionCurveGetParamID(n25dModel* p_n25dModel, int32_t motionID, int32_t curveIndex);
+// return the curve's parameter ID, or -1 on a bad motion/curve id
+//	parameters:
+//				p_n25dModel - pointer to allocated model
+//				motionID - motion ID
+//				curveIndex - curve index
+//////////////////////////////////////////////////////////////////////////
+int32_t n25dModelMotionCurveGetParamID(n25dModel* p_n25dModel, int32_t motionID, int32_t curveIndex);
+
+//////////////////////////////////////////////////////////////////////////
+// n25dModelMotionCurveGetKeyCount(n25dModel* p_n25dModel, int32_t motionID, int32_t curveIndex);
+// return key count, or -1 on a bad motion/curve id
+//	parameters:
+//				p_n25dModel - pointer to allocated model
+//				motionID - motion ID
+//				curveIndex - curve index
+//////////////////////////////////////////////////////////////////////////
+int32_t n25dModelMotionCurveGetKeyCount(n25dModel* p_n25dModel, int32_t motionID, int32_t curveIndex);
+
+//////////////////////////////////////////////////////////////////////////
+// n25dMotionGetDuration(n25dModel* p_n25dModel, int32_t motionID);
+// return motion duration in seconds (max key time across all curves; 0 if no keys
+// or a bad motion id), derived on demand, never stored
+//	parameters:
+//				p_n25dModel - pointer to allocated model
+//				motionID - motion ID
+//////////////////////////////////////////////////////////////////////////
+float   n25dMotionGetDuration(n25dModel* p_n25dModel, int32_t motionID);
+
+//////////////////////////////////////////////////////////////////////////
+// n25dMotionCurveValueAt(n25dModel* p_n25dModel, int32_t motionID, int32_t curveIndex, float time);
+// return the curve's interpolated value at `time` (pure read: no bus write, no
+// recompute; 0.0f on a bad motion/curve id). Holds the first/last key value
+// outside the key time range. A curve with 0 keys always yields 0.0f.
+//	parameters:
+//				p_n25dModel - pointer to allocated model
+//				motionID - motion ID
+//				curveIndex - curve index
+//				time - time in seconds
+//////////////////////////////////////////////////////////////////////////
+float   n25dMotionCurveValueAt(n25dModel* p_n25dModel, int32_t motionID,
+								   int32_t curveIndex, float time);
+
+//////////////////////////////////////////////////////////////////////////
+// n25dModelSampleMotion(n25dModel* p_n25dModel, int32_t motionID, float time);
+// no return data
+//	parameters:
+//				p_n25dModel - pointer to allocated model
+//				motionID - motion ID (bad id is a no-op)
+//				time - time in seconds
+//	Writes every curve's value at `time` to the bus (clamped to [min,max]) and
+//	recomputes all meshes. Params without a curve are left unchanged (partial
+//	override). A curve with 0 keys writes 0.0f to its param. The caller owns the
+//	clock (looping/fading wrap `time` before calling).
+//////////////////////////////////////////////////////////////////////////
+void    n25dModelSampleMotion(n25dModel* p_n25dModel, int32_t motionID, float time);
 
 //////////////////////////////////////////////////////////////////////////
 // n25dPartSetParamVertexPos(n25dModel* p_n25dModel, int32_t n25dPartID, int32_t ParamID, int32_t Key, int32_t v, float x, float y);

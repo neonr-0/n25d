@@ -347,6 +347,39 @@ int8_t* n25dSaveToMemory(n25dModel* p_n25dModel, int32_t* out_dataLen)
 		}
 	}
 
+	//Next block (Motions)
+	dataLen = n25dFileHelperAdd_int32(dataC, n25FileT_ModelMotions, dataLen);
+	for (int i = 0; i < p_n25dModel->nMotionC; i++)
+	{
+		dataC = n25dSaveBufferGrow(dataC, dataLen, &dataLenMax);
+		if (dataC == NULL) goto savefail;
+		dataLen = n25dFileHelperAdd_int32(dataC, n25FileT_ModelMotion_next, dataLen);
+		int32_t name_len = p_n25dModel->nMotion[i].name_len;
+		dataLen = n25dFileHelperAdd_int32(dataC, name_len, dataLen);
+		if (name_len > 0)
+			dataLen = n25dFileHelperAdd_blob(dataC, p_n25dModel->nMotion[i].name, name_len, dataLen);
+		dataLen = n25dFileHelperAdd_int32(dataC, p_n25dModel->nMotion[i].curveC, dataLen);
+		for (int i2 = 0; i2 < p_n25dModel->nMotion[i].curveC; i2++)
+		{
+			n25dMotionCurve* c = &p_n25dModel->nMotion[i].curves[i2];
+			dataC = n25dSaveBufferGrow(dataC, dataLen, &dataLenMax);
+			if (dataC == NULL) goto savefail;
+			dataLen = n25dFileHelperAdd_int32(dataC, c->param_id, dataLen);
+			dataLen = n25dFileHelperAdd_int32(dataC, c->keyC, dataLen);
+			for (int i3 = 0; i3 < c->keyC; i3++)
+			{
+				dataC = n25dSaveBufferGrow(dataC, dataLen, &dataLenMax);
+				if (dataC == NULL) goto savefail;
+				//Fixed 28-byte key block: time + value + ease + 4 bz floats (always stored, 0 for linear)
+				dataLen = n25dFileHelperAdd_f32(dataC, c->keys[i3].time, dataLen);
+				dataLen = n25dFileHelperAdd_f32(dataC, c->keys[i3].value, dataLen);
+				dataLen = n25dFileHelperAdd_int32(dataC, c->keys[i3].ease, dataLen);
+				for (int i4 = 0; i4 < 4; i4++)
+					dataLen = n25dFileHelperAdd_f32(dataC, c->keys[i3].bz[i4], dataLen);
+			}
+		}
+	}
+
 	dataLen = n25dFileHelperAdd_int32(dataC, n25FileT_EOF, dataLen);
 	*out_dataLen = dataLen;
 	return dataC;
@@ -371,7 +404,8 @@ enum n25ParseSection
 	N25PS_POSES,
 	N25PS_POSE_NEXT,
 	N25PS_GROUPS, // reserved section start (no payload yet)
-	N25PS_MOTIONS,// reserved section start (no payload yet)
+	N25PS_MOTIONS,// section start (no payload); motion blocks follow as N25PS_MOTION_NEXT
+	N25PS_MOTION_NEXT,
 	N25PS_EOF,
 };
 static int32_t n25dMarkerToSection(int32_t raw, int8_t isV2)
@@ -390,8 +424,9 @@ static int32_t n25dMarkerToSection(int32_t raw, int8_t isV2)
 		case (int32_t)n25FileT_ModelPose_next: return N25PS_POSE_NEXT;
 		case (int32_t)n25FileT_ModelGroups:    return N25PS_GROUPS;
 		case (int32_t)n25FileT_ModelMotions:   return N25PS_MOTIONS;
+		case (int32_t)n25FileT_ModelMotion_next: return N25PS_MOTION_NEXT;
 		case (int32_t)n25FileT_EOF:            return N25PS_EOF;
-		default:                               return -1; // reserved _next + unknown
+		default:                               return -1; // unknown marker
 		}
 	}
 	// v1 (original numbering)
@@ -700,11 +735,94 @@ n25dModel* n25dLoadFromMemory(int8_t* dataC, int32_t dataLenMax)
 				break;
 			}
 
+			case N25PS_MOTION_NEXT: //ModelMotion block (v2)
+			{
+				//No motion count in the header: cap the streaming count at the file
+				//limit before it allocates (prevents allocation amplification from a
+				//hostile stream, mirrors the pose early-bound)
+				if (p_n25dModel->nMotionC >= (int32_t)N25D_FILE_MAX_MOTIONS)
+					goto fail;
+				if ((int64_t)dataLen + (int32_t)sizeof(int32_t) > (int64_t)dataLenMax)
+					goto fail;
+				int32_t name_len = 0;
+				dataLen = n25dFileHelperGet_int32(dataC, &name_len, dataLen);
+				if (name_len < 0 || name_len > (int32_t)MAX_MOTION_NAME)
+					goto fail;
+				if ((int64_t)dataLen + name_len + (int64_t)sizeof(int32_t) > (int64_t)dataLenMax)
+					goto fail;
+				char name_buf[MAX_MOTION_NAME + 1];
+				if (name_len > 0)
+				{
+					dataLen = n25dFileHelperGet_blob(dataC, name_buf, name_len, dataLen);
+					name_buf[name_len] = '\0';
+				}
+				int32_t curve_count = 0;
+				dataLen = n25dFileHelperGet_int32(dataC, &curve_count, dataLen);
+				if (curve_count < 0 || curve_count > (int32_t)N25D_FILE_MAX_MOTION_CURVES)
+					goto fail;
+				int32_t motion_id = n25dModelMotionNew(p_n25dModel, name_buf, name_len);
+				if (motion_id < 0)
+					goto fail;
+				for (int i2 = 0; i2 < curve_count; i2++)
+				{
+					if ((int64_t)dataLen + 2 * (int32_t)sizeof(int32_t) > (int64_t)dataLenMax)
+						goto fail;
+					int32_t param_id = 0, key_count = 0;
+					dataLen = n25dFileHelperGet_int32(dataC, &param_id, dataLen);
+					dataLen = n25dFileHelperGet_int32(dataC, &key_count, dataLen);
+					if (key_count < 0 || key_count > (int32_t)N25D_FILE_MAX_MOTION_KEYS)
+						goto fail;
+					//Each key: time(f32) + value(f32) + ease(i32) + 4 bz floats(f32) = 6 floats + 1 int32
+					//= 28 bytes (int64 to avoid wrap on big buffers). Must match the read count exactly.
+					if ((int64_t)dataLen + (int64_t)key_count * ((int64_t)(6 * (int64_t)sizeof(float) + (int64_t)sizeof(int32_t))) > (int64_t)dataLenMax)
+						goto fail;
+					//n25dModelMotionAddCurve validates param_id < nParamC. Save writes params
+					//before motions (round-trip well-defined); a hostile stream with a motion
+					//before its params is safely rejected here.
+					int32_t curve_index = n25dModelMotionAddCurve(p_n25dModel, motion_id, param_id);
+					if (curve_index < 0)
+						goto fail;
+					float prev_time = 0.0f;
+					int32_t first_key = 1;
+					for (int i3 = 0; i3 < key_count; i3++)
+					{
+						float time = 0.0f, value = 0.0f;
+						int32_t ease = 0;
+						float bz[4];
+						dataLen = n25dFileHelperGet_f32(dataC, &time, dataLen);
+						dataLen = n25dFileHelperGet_f32(dataC, &value, dataLen);
+						dataLen = n25dFileHelperGet_int32(dataC, &ease, dataLen);
+						for (int i4 = 0; i4 < 4; i4++)
+						{
+							bz[i4] = 0.0f;
+							dataLen = n25dFileHelperGet_f32(dataC, &bz[i4], dataLen);
+						}
+						//Only the two known easing tags are valid (a hostile stream
+						//could otherwise plant an unknown easing tag)
+						if (ease != (int32_t)N25EASE_LINEAR && ease != (int32_t)N25EASE_BEZIER)
+							goto fail;
+						//Reject a non-finite key time: NaN slips past the sorted check below
+						//(NaN compares false both ways) and would break the sampler's binary search
+						if (time != time)
+							goto fail;
+						//Keys must be non-decreasing in time (sorted invariant)
+						if (!first_key && time < prev_time)
+							goto fail;
+						if (n25dModelMotionCurveAddKey(p_n25dModel, motion_id, curve_index, time, value) < 0)
+							goto fail;
+						n25dModelMotionCurveKeySetEase(p_n25dModel, motion_id, curve_index, i3, ease, bz[0], bz[1], bz[2], bz[3]);
+						prev_time = time;
+						first_key = 0;
+					}
+				}
+				break;
+			}
+
 			case N25PS_PARTS:
 			case N25PS_PARAMS:
 			case N25PS_POSES:
 			case N25PS_GROUPS: // reserved section start (no payload yet)
-			case N25PS_MOTIONS:// reserved section start (no payload yet)
+			case N25PS_MOTIONS:// section start (no payload); motion blocks follow
 				break;
 
 			default:

@@ -148,6 +148,43 @@ struct n25dPose
 };
 typedef struct n25dPose n25dPose;
 //////////////////////////////////////////////////////////////////////////
+// n25dMotion - a named, time-keyframed set of parameter curves.
+// Easing is per segment: each key carries the easing applied to the segment
+// from this key to the next (the last key's easing is unused).
+//////////////////////////////////////////////////////////////////////////
+// Per-segment easing. N25EASE_LINEAR = plain lerp; N25EASE_BEZIER = a cubic
+// bezier with control points in the key's bz[4] (x1,y1,x2,y2) and implicit
+// endpoints (0,0) and (1,1).
+enum n25dMotionEase {
+	N25EASE_LINEAR = 0,
+	N25EASE_BEZIER = 1,
+};
+
+struct n25dMotionKey {
+	float   time;    // seconds
+	float   value;
+	int32_t ease;    // n25dMotionEase; applies to [this key -> next key]
+	float   bz[4];   // bezier control points x1,y1,x2,y2 (ease==N25EASE_BEZIER)
+};
+typedef struct n25dMotionKey n25dMotionKey;
+
+struct n25dMotionCurve {
+	int32_t     param_id;   // references a model param by id (params load first)
+	n25dMotionKey* keys;    // sorted by time (non-decreasing)
+	int32_t     keyC;
+	int32_t     keyCMAX;
+};
+typedef struct n25dMotionCurve n25dMotionCurve;
+
+struct n25dMotion {
+	char*             name;      // stable identity; NULL when name_len == 0
+	int32_t           name_len;  // name length in bytes (authoritative, no NUL required)
+	n25dMotionCurve*  curves;
+	int32_t           curveC;
+	int32_t           curveCMAX;
+};
+typedef struct n25dMotion n25dMotion;
+//////////////////////////////////////////////////////////////////////////
 // n25dModel 
 //////////////////////////////////////////////////////////////////////////
 struct n25dModel
@@ -172,10 +209,14 @@ struct n25dModel
 	//Poses (named param-value bundles)
 	int32_t nPoseC;
 	int32_t nPoseCMAX;
+	//Motions (named time-keyframed param curves)
+	int32_t nMotionC;
+	int32_t nMotionCMAX;
 	//Pointers
 	n25dParam* nParam;
 	n25dPart* nPart;
 	n25dPose* nPose;
+	n25dMotion* nMotion;
 	char* nModelName;
 };
 typedef struct n25dModel n25dModel;
